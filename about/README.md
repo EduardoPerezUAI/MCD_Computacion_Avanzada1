@@ -1,16 +1,19 @@
-# Nombre Apellido
+# Eduardo Perez Infante
 
 ## Perfil
 
-**Disciplina / formación:**  
-**Qué hago hoy:**  
+**Disciplina / formación:**  Arquitecto, Estudios de las Comunicaciones
+
+**Qué hago hoy:**  Administracion 
 **Qué me gustaría aprender en este curso:**  
 
 ## Intereses
 
-- Tema o disciplina 1
-- Tema o disciplina 2
-- Tema o disciplina 3
+- Arquitectura, y dimension performativa del diseño.
+- Música y arte
+- Deportes, ciclismo, natacion, tenis
+
+![Gracias por existir](../assets/images/gracias.jpg)
 
 ## Una pregunta que me interesa explorar
 
@@ -23,7 +26,7 @@ Agrega una imagen local en `assets/images/` y cítala con Markdown, o agrega un 
 ```md
 ![Descripción de la imagen](../assets/images/mi-imagen.jpg)
 ```
-
+![Gracias por existir](../assets/images/gracias.jpg)
 ## Links
 
 - [Referencia 1](https://example.com)
