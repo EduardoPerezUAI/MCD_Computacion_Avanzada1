@@ -4,7 +4,7 @@
 
 **Disciplina / formación:**  Arquitecto, Estudios de las Comunicaciones
 
-**Qué hago hoy:**  Administración, producción técnica
+**Qué hago hoy:**  Administración, producción técnica de arte
 **Qué me gustaría aprender en este curso:**  Visualizar y compartir data, integrar data como parametros de diseño
 
 ## Intereses
@@ -17,6 +17,8 @@
 ## Una pregunta que me interesa explorar
 
 Escribe una pregunta pequeña que pueda transformarse en reglas, datos, geometría, imágenes o interacción.
+
+
 
 ## Algo que me inspira
 
