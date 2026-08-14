@@ -9,9 +9,9 @@
 
 ## Intereses
 
-- Arquitectura, y dimension performativa del diseño.
-- El Juego como fenómeno social y como entrada al diseño
-- Deportes, ciclismo, natacion, tenis
+- Dimension performativa del diseño.
+- El Juego como fenómeno cultural y como entrada al diseño
+- Deportes: ciclismo, natacion, tenis
 
 
 ## Una pregunta que me interesa explorar
@@ -22,7 +22,7 @@ Escribe una pregunta pequeña que pueda transformarse en reglas, datos, geometr�
 
 Agrega una imagen local en `assets/images/` y cítala con Markdown, o agrega un link a un proyecto/referencia.
 
-![Modelo](../assets/models/Figura%202%20-%2002.glb)
+![Modelo](../assets/models/replica_cabeza_recuay.glb)
 
 
 ```md
