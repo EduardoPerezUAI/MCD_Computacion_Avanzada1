@@ -15,16 +15,17 @@ const valoresIniciales = {
   aleatoriedad: 0.0,
   semilla: 42,
 };
-
 const parametros = { ...valoresIniciales };
 
 const biometria = {
-  inputA: 760,
-  inputB: 760,
-  deltaRR: 0,
+  inputA: 780,
+  inputB: 772,
+  deltaRR: 8,
   simulacionActiva: true,
-  modo: "estrés",
+  modo: "estres",
 };
+
+const DURACION_CAMBIO_BIOMETRICO = 800;
 
 // ======================================================
 // 02 — ESCENA
@@ -117,37 +118,36 @@ const materialModulo = new THREE.MeshStandardMaterial({
 // posición → distancia al centro → onda → altura
 function calcularAlturaModulo(x, z) {
   const distancia = Math.sqrt(x * x + z * z);
+  const pulso = (biometria.inputA + biometria.inputB) / 2 / 800;
+  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const ondaSuave = Math.sin(distancia * parametros.frecuencia) * parametros.amplitud;
+  const ondaTensa =
+    Math.sin(x * parametros.frecuencia * 2.4 + z * 0.8) *
+    Math.cos(z * parametros.frecuencia * 1.8 - x * 0.45) *
+    parametros.amplitud * 0.9;
+  const ruido = aleatoriedadConSemilla(x, z, parametros.semilla) * parametros.aleatoriedad;
+  const aspereza = aleatoriedadConSemilla(x * 1.7, z * 1.7, parametros.semilla + 11) * tension * 1.5;
+  const onda = THREE.MathUtils.lerp(ondaSuave, ondaTensa + aspereza, tension);
 
-  const promedioRR = (biometria.inputA + biometria.inputB) / 2;
-  const escalaPulso = THREE.MathUtils.mapLinear(promedioRR, 600, 1000, 0.78, 1.22);
-  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 90, 0, 1);
-
-  const ondaSuave =
-    Math.sin(distancia * parametros.frecuencia - promedioRR * 0.004) *
-    parametros.amplitud;
-  const ondaAguda =
-    Math.sin(x * 2.7 + z * 4.1) *
-    Math.cos(distancia * 3.6) *
-    parametros.amplitud *
-    0.7;
-
-  const onda = THREE.MathUtils.lerp(ondaSuave, ondaAguda, tension);
-
-  const ruido =
-    aleatoriedadConSemilla(x, z, parametros.semilla) *
-    (parametros.aleatoriedad + tension * 0.7);
-
-  return Math.max(0.25, (1.2 + onda + ruido) * escalaPulso);
+  return Math.max(0.25, 1.2 + onda * pulso);
 }
 
 // Regla B:
 // la orientación depende de la dirección radial respecto al centro.
 function calcularRotacionModulo(x, z) {
   const direccion = Math.atan2(z, x);
-  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 90, 0, 1);
-  const torsion = Math.sin(x * 1.8 + z * 1.2) * tension * 0.38;
+  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const torsion = Math.sin((x - z) * parametros.frecuencia * 1.8) * tension * 0.5;
+  return direccion * parametros.rotacion * (0.65 + tension * 1.35) + torsion;
+}
 
-  return direccion * parametros.rotacion + torsion;
+function actualizarColorSomatico() {
+  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const colorCalma = new THREE.Color(0x27c7d9);
+  const colorTension = new THREE.Color(0xf04438);
+
+  materialModulo.color.copy(colorCalma).lerp(colorTension, tension);
+  materialModulo.emissive.copy(materialModulo.color).multiplyScalar(0.08 + tension * 0.12);
 }
 
 // ======================================================
@@ -156,6 +156,7 @@ function calcularRotacionModulo(x, z) {
 
 function generarCampo() {
   limpiarCampo();
+  actualizarColorSomatico();
 
   const ancho = (parametros.columnas - 1) * parametros.separacion;
   const profundidad = (parametros.filas - 1) * parametros.separacion;
@@ -169,17 +170,6 @@ function generarCampo() {
       const rotacion = calcularRotacionModulo(x, z);
 
       const modulo = new THREE.Mesh(geometriaModulo, materialModulo);
-
-      const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 90, 0, 1);
-      const colorModulo = new THREE.Color();
-      const matiz = THREE.MathUtils.lerp(0.54, 0.015, tension);
-      const saturacion = THREE.MathUtils.lerp(0.72, 0.86, tension);
-      const luminosidad = THREE.MathUtils.lerp(0.52, 0.48, tension);
-      colorModulo.setHSL(matiz, saturacion, luminosidad);
-
-      // Cada módulo conserva su propia lectura cromática del estado somático.
-      modulo.material = materialModulo.clone();
-      modulo.material.color.copy(colorModulo);
 
       // Escalamos solo en Y para modificar la altura.
       modulo.scale.y = altura;
@@ -248,115 +238,92 @@ const valoresVisibles = {
   semilla: document.querySelector("#semilla-valor"),
 };
 
-function crearInterfazBiometrica() {
-  const estilos = document.createElement("style");
-  estilos.textContent = `
-    .biometric-hud {
-      position: fixed;
-      z-index: 20;
-      top: 24px;
-      right: 364px;
-      width: min(360px, calc(100vw - 40px));
-      padding: 14px 16px;
-      border: 1px solid rgba(120, 255, 211, 0.35);
-      background: rgba(8, 15, 17, 0.88);
-      color: #a9ffe7;
-      font: 11px/1.45 monospace;
-      box-shadow: 0 0 24px rgba(46, 255, 187, 0.08);
-      backdrop-filter: blur(8px);
-    }
-    .biometric-title { margin: 0 0 8px; color: #62e8bd; letter-spacing: .12em; }
-    #biometric-readout { margin: 0 0 4px; color: #f0fff9; font-variant-numeric: tabular-nums; }
-    .biometric-mode { margin: 0 0 12px; color: #62e8bd; letter-spacing: .08em; }
-    .biometric-mode[data-estado="estrés"] { color: #ff6d5f; }
-    .biometric-hud label { display: grid; grid-template-columns: 58px 1fr; gap: 10px; margin: 7px 0; color: #8bb9ad; }
-    .biometric-hud input[type="range"] { width: 100%; accent-color: #62e8bd; }
-    .biometric-hud button { width: 100%; margin-top: 8px; padding: 8px; border: 1px solid #62e8bd; background: transparent; color: #a9ffe7; font: inherit; cursor: pointer; }
-    .biometric-hud button:hover { background: rgba(98, 232, 189, 0.12); }
-    @media (max-width: 900px) {
-      .biometric-hud { top: 20px; right: 20px; width: min(360px, calc(100vw - 40px)); }
-    }
-  `;
-  document.head.appendChild(estilos);
+const overlayBiometrico = document.createElement("aside");
+overlayBiometrico.className = "biometric-overlay";
+overlayBiometrico.innerHTML = `
+  <div class="biometric-title">MODO HACKER · BIOFEEDBACK</div>
+  <output class="biometric-readout"></output>
+  <label>INPUT A <input class="biometric-input-a" type="range" min="600" max="1000" step="1" /></label>
+  <label>INPUT B <input class="biometric-input-b" type="range" min="600" max="1000" step="1" /></label>
+  <button class="biometric-toggle" type="button"></button>
+`;
+Object.assign(overlayBiometrico.style, {
+  position: "absolute",
+  top: "1rem",
+  right: "1rem",
+  zIndex: "2",
+  width: "min(25rem, calc(100% - 2rem))",
+  padding: "0.8rem",
+  color: "#b8fff0",
+  background: "rgba(4, 12, 15, 0.86)",
+  border: "1px solid rgba(39, 199, 217, 0.5)",
+  fontFamily: "monospace",
+  fontSize: "0.72rem",
+  lineHeight: "1.5",
+  boxSizing: "border-box",
+});
+overlayBiometrico.querySelectorAll("label").forEach((label) => {
+  label.style.display = "grid";
+  label.style.gap = "0.2rem";
+  label.style.marginTop = "0.5rem";
+});
+overlayBiometrico.querySelector(".biometric-toggle").style.marginTop = "0.6rem";
+viewport.appendChild(overlayBiometrico);
 
-  const interfaz = document.createElement("section");
-  interfaz.className = "biometric-hud";
-  interfaz.innerHTML = `
-    <p class="biometric-title">MODO HACKER · BIOFEEDBACK</p>
-    <p id="biometric-readout"></p>
-    <p id="biometric-mode" class="biometric-mode"></p>
-    <label>INPUT A <input id="inputA" type="range" min="600" max="1000" step="1" value="${biometria.inputA}"></label>
-    <label>INPUT B <input id="inputB" type="range" min="600" max="1000" step="1" value="${biometria.inputB}"></label>
-    <button id="toggle-biometria" type="button"></button>
-  `;
+const lecturaBiometrica = overlayBiometrico.querySelector(".biometric-readout");
+const controlInputA = overlayBiometrico.querySelector(".biometric-input-a");
+const controlInputB = overlayBiometrico.querySelector(".biometric-input-b");
+const botonSimulacion = overlayBiometrico.querySelector(".biometric-toggle");
 
-  document.body.appendChild(interfaz);
-
-  const controlesBiometricos = {
-    inputA: interfaz.querySelector("#inputA"),
-    inputB: interfaz.querySelector("#inputB"),
-  };
-
-  function actualizarLectura() {
-    const readout = interfaz.querySelector("#biometric-readout");
-    const modo = interfaz.querySelector("#biometric-mode");
-
-    readout.textContent =
-      `Latido A: ${biometria.inputA} ms | Latido B: ${biometria.inputB} ms | ` +
-      `ΔRR (HRV): ${biometria.deltaRR} ms`;
-    modo.textContent = `ESTADO: ${biometria.modo.toUpperCase()}`;
-    modo.dataset.estado = biometria.modo;
-    interfaz.querySelector("#toggle-biometria").textContent = biometria.simulacionActiva
-      ? "Pausar simulación"
-      : "Activar simulación";
-  }
-
-  function actualizarBiometria(inputA, inputB) {
-    biometria.inputA = THREE.MathUtils.clamp(Math.round(inputA), 600, 1000);
-    biometria.inputB = THREE.MathUtils.clamp(Math.round(inputB), 600, 1000);
-    biometria.deltaRR = Math.abs(biometria.inputA - biometria.inputB);
-    biometria.modo = biometria.deltaRR < 15 ? "estrés" : "calma";
-
-    controlesBiometricos.inputA.value = biometria.inputA;
-    controlesBiometricos.inputB.value = biometria.inputB;
-    actualizarLectura();
-    generarCampo();
-  }
-
-  Object.entries(controlesBiometricos).forEach(([nombre, control]) => {
-    control.addEventListener("input", () => {
-      biometria.simulacionActiva = false;
-      actualizarBiometria(
-        nombre === "inputA" ? control.value : controlesBiometricos.inputA.value,
-        nombre === "inputB" ? control.value : controlesBiometricos.inputB.value
-      );
-    });
-  });
-
-  interfaz.querySelector("#toggle-biometria").addEventListener("click", () => {
-    biometria.simulacionActiva = !biometria.simulacionActiva;
-    actualizarLectura();
-  });
-
-  actualizarLectura();
-  return actualizarBiometria;
+function actualizarLecturaBiometrica() {
+  const estado = biometria.modo === "estres" ? "ESTRÉS / ALERTA" : "CALMA / TONO VAGAL";
+  lecturaBiometrica.textContent =
+    `Latido A: ${biometria.inputA} ms | Latido B: ${biometria.inputB} ms | ΔRR (HRV): ${biometria.deltaRR} ms · ${estado}`;
+  controlInputA.value = biometria.inputA;
+  controlInputB.value = biometria.inputB;
+  botonSimulacion.textContent = biometria.simulacionActiva
+    ? "PAUSAR SIMULACIÓN"
+    : "ACTIVAR SIMULACIÓN";
 }
 
-const actualizarBiometria = crearInterfazBiometrica();
+function actualizarBiometria(inputA, inputB) {
+  biometria.inputA = THREE.MathUtils.clamp(Math.round(inputA), 600, 1000);
+  biometria.inputB = THREE.MathUtils.clamp(Math.round(inputB), 600, 1000);
+  biometria.deltaRR = Math.abs(biometria.inputA - biometria.inputB);
+  biometria.modo = biometria.deltaRR < 15 ? "estres" : "calma";
+  actualizarLecturaBiometrica();
+  generarCampo();
+}
 
-function simularBiometria() {
+function generarLatidosSimulados() {
   if (!biometria.simulacionActiva) return;
 
-  const base = 680 + Math.random() * 260;
-  const diferencia = biometria.modo === "estrés"
-    ? Math.random() * 10
-    : 50 + Math.random() * 70;
+  const modoSiguiente = biometria.modo === "estres" ? "calma" : "estres";
+  const inputA = 700 + Math.random() * 150;
+  const variacion = modoSiguiente === "estres"
+    ? Math.random() * 14 - 7
+    : 50 + Math.random() * 20;
 
-  actualizarBiometria(base, base + diferencia);
-  biometria.modo = biometria.modo === "estrés" ? "calma" : "estrés";
+  actualizarBiometria(inputA, inputA + variacion);
 }
 
-setInterval(simularBiometria, 800);
+controlInputA.addEventListener("input", (event) => {
+  biometria.simulacionActiva = false;
+  actualizarBiometria(event.target.value, biometria.inputB);
+});
+
+controlInputB.addEventListener("input", (event) => {
+  biometria.simulacionActiva = false;
+  actualizarBiometria(biometria.inputA, event.target.value);
+});
+
+botonSimulacion.addEventListener("click", () => {
+  biometria.simulacionActiva = !biometria.simulacionActiva;
+  actualizarLecturaBiometrica();
+});
+
+actualizarLecturaBiometrica();
+setInterval(generarLatidosSimulados, DURACION_CAMBIO_BIOMETRICO);
 
 function actualizarParametro(nombre, valor) {
   const parametrosEnteros = ["columnas", "filas", "semilla"];
