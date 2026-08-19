@@ -11,7 +11,6 @@ const valoresIniciales = {
   separacion: 1.2,
   amplitud: 3.0,
   frecuencia: 0.4,
-  rotacion: 0.3,
   aleatoriedad: 0.0,
   semilla: 42,
 };
@@ -21,13 +20,13 @@ let inputA = 780;
 let inputB = 772;
 let deltaRR = 8;
 let bpm = 0;
-
-const biometria = {
-  simulacionActiva: true,
-  modo: "estres",
-};
-
-const DURACION_CAMBIO_BIOMETRICO = 800;
+const VENTANA_RR = 12;
+const intervalosRR = [inputA, inputB];
+let rmssd = 0;
+let factorSomatico = 0;
+let factorSomaticoObjetivo = 0;
+let frecuenciaCoherente = 0;
+let dispersionRR = 0;
 
 // ======================================================
 // 02 — ESCENA
@@ -61,12 +60,15 @@ controlesOrbita.enableDamping = true;
 controlesOrbita.target.set(0, 1.2, 0);
 
 // Iluminación general.
-const luzHemisferica = new THREE.HemisphereLight(0xf3efe5, 0x202229, 1.7);
+const luzAmbiente = new THREE.AmbientLight(0xdcecff, 2.2);
+escena.add(luzAmbiente);
+
+const luzHemisferica = new THREE.HemisphereLight(0xf3efe5, 0x202229, 2.4);
 escena.add(luzHemisferica);
 
 // Luz principal.
-const luzPrincipal = new THREE.DirectionalLight(0xffffff, 3.1);
-luzPrincipal.position.set(8, 14, 9);
+const luzPrincipal = new THREE.DirectionalLight(0xffffff, 4.5);
+luzPrincipal.position.set(10, 18, 12);
 luzPrincipal.castShadow = true;
 escena.add(luzPrincipal);
 
@@ -102,97 +104,193 @@ escena.add(grilla);
 const grupoCampo = new THREE.Group();
 escena.add(grupoCampo);
 
-const geometriaModulo = new THREE.BoxGeometry(0.76, 1, 0.76);
-
-const materialModulo = new THREE.MeshStandardMaterial({
-  color: 0xd7d2c8,
-  roughness: 0.58,
-  metalness: 0.03,
+const geometriaEsfera = new THREE.SphereGeometry(0.12, 12, 8);
+const materialCardiograma = new THREE.MeshBasicMaterial({
+  color: 0xffffff,
 });
+const cardiogramas = { A: null, B: null };
+const reloj = new THREE.Clock();
+const colorA = new THREE.Color();
+const colorB = new THREE.Color();
+const colorEstres = new THREE.Color(0xff214d);
+const colorTransicion = new THREE.Color(0xff35da);
+const colorCalma = new THREE.Color(0x35ffd0);
+const matrizEsfera = new THREE.Matrix4();
+const escalaEsfera = new THREE.Vector3();
+const cuaternionIdentidad = new THREE.Quaternion();
 
 // ======================================================
 // 04 — REGLAS GENERATIVAS
 // ======================================================
-// Estas funciones representan decisiones de diseño.
-// Si cambian estas reglas, cambia la familia de resultados.
 
-// Regla A:
-// posición → distancia al centro → onda → altura
-function calcularAlturaModulo(x, z) {
-  const distancia = Math.sqrt(x * x + z * z);
-  const pulso = (inputA + inputB) / 2 / 800;
-  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
-  const ondaSuave = Math.sin(distancia * parametros.frecuencia) * parametros.amplitud;
-  const ondaTensa =
-    Math.sin(x * parametros.frecuencia * 2.4 + z * 0.8) *
-    Math.cos(z * parametros.frecuencia * 1.8 - x * 0.45) *
-    parametros.amplitud * 0.9;
-  const ruido = aleatoriedadConSemilla(x, z, parametros.semilla) * parametros.aleatoriedad;
-  const aspereza = aleatoriedadConSemilla(x * 1.7, z * 1.7, parametros.semilla + 11) * tension * 1.5;
-  const onda = THREE.MathUtils.lerp(ondaSuave, ondaTensa + aspereza, tension);
-
-  return Math.max(0.25, 1.2 + onda * pulso);
+function calcularRMSSD() {
+  if (intervalosRR.length < 2) return 0;
+  let sumaCuadrados = 0;
+  for (let indice = 1; indice < intervalosRR.length; indice++) {
+    const diferencia = intervalosRR[indice] - intervalosRR[indice - 1];
+    sumaCuadrados += diferencia * diferencia;
+  }
+  return Math.sqrt(sumaCuadrados / (intervalosRR.length - 1));
 }
 
-// Regla B:
-// la orientación depende de la dirección radial respecto al centro.
-function calcularRotacionModulo(x, z) {
-  const direccion = Math.atan2(z, x);
-  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
-  const torsion = Math.sin((x - z) * parametros.frecuencia * 1.8) * tension * 0.5;
-  return direccion * parametros.rotacion * (0.65 + tension * 1.35) + torsion;
+function calcularCoherenciaRR() {
+  if (intervalosRR.length < 4) return 0.5;
+
+  const tiempos = [0];
+  for (let indice = 1; indice < intervalosRR.length; indice++) {
+    tiempos.push(tiempos[indice - 1] + intervalosRR[indice - 1] / 1000);
+  }
+
+  const media = intervalosRR.reduce((suma, intervalo) => suma + intervalo, 0) / intervalosRR.length;
+  const centrados = intervalosRR.map((intervalo) => intervalo - media);
+  const energia = centrados.reduce((suma, valor) => suma + valor * valor, 0);
+  if (energia < 1) return 0.5;
+
+  let mejorFrecuencia = 0.04;
+  let mejorAjuste = 0;
+  for (let paso = 0; paso <= 24; paso++) {
+    const frecuencia = 0.04 + paso * 0.0025;
+    let seno = 0;
+    let coseno = 0;
+    for (let indice = 0; indice < centrados.length; indice++) {
+      const fase = tiempos[indice] * frecuencia * Math.PI * 2;
+      seno += centrados[indice] * Math.sin(fase);
+      coseno += centrados[indice] * Math.cos(fase);
+    }
+    const ajuste = (seno * seno + coseno * coseno) * 2 / (centrados.length * energia);
+    if (ajuste > mejorAjuste) {
+      mejorAjuste = ajuste;
+      mejorFrecuencia = frecuencia;
+    }
+  }
+
+  const desviacion = Math.sqrt(energia / intervalosRR.length);
+  const dispersionNormalizada = THREE.MathUtils.clamp(desviacion / 45, 0, 1);
+  let dispersionDiferencias = 0;
+  for (let indice = 1; indice < centrados.length; indice++) {
+    dispersionDiferencias += Math.abs(centrados[indice] - centrados[indice - 1]);
+  }
+  const regularidad = 1 - THREE.MathUtils.clamp(
+    dispersionDiferencias / (centrados.length * 55),
+    0,
+    1
+  );
+  const bandaResonante = mejorFrecuencia >= 0.04 && mejorFrecuencia <= 0.10 ? 1 : 0;
+
+  frecuenciaCoherente = mejorFrecuencia;
+  dispersionRR = desviacion;
+  return THREE.MathUtils.clamp(
+    mejorAjuste * 0.55 + regularidad * 0.3 + bandaResonante * 0.15 - dispersionNormalizada * 0.15,
+    0,
+    1
+  );
 }
 
-function actualizarColorSomatico() {
-  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
-  const colorCalma = new THREE.Color(0x27c7d9);
-  const colorTension = new THREE.Color(0xf04438);
+function actualizarTendenciaBiometrica() {
+  rmssd = calcularRMSSD();
+  factorSomaticoObjetivo = calcularCoherenciaRR();
+  deltaRR = Math.abs(inputA - inputB);
+}
 
-  materialModulo.color.copy(colorCalma).lerp(colorTension, tension);
-  materialModulo.emissive.copy(materialModulo.color).multiplyScalar(0.08 + tension * 0.12);
+function registrarIntervaloRR(intervalo) {
+  const intervaloSeguro = THREE.MathUtils.clamp(Math.round(intervalo), 600, 1000);
+  inputA = inputB;
+  inputB = intervaloSeguro;
+  intervalosRR.push(intervaloSeguro);
+  if (intervalosRR.length > VENTANA_RR) intervalosRR.shift();
+  actualizarTendenciaBiometrica();
+  actualizarLecturaBiometrica();
+}
+
+function colorSomatico(factor, destino) {
+  if (factor < 0.5) {
+    destino.copy(colorEstres).lerp(colorTransicion, factor * 2);
+  } else {
+    destino.copy(colorTransicion).lerp(colorCalma, (factor - 0.5) * 2);
+  }
+}
+
+function calcularPuntoCardiograma(indice, total, intervalo, radio, desfase, tiempo, destino) {
+  const progreso = indice / (total - 1);
+  const angulo = progreso * Math.PI * 2 + desfase;
+  const frecuencia = 1000 / Math.max(intervalo, 1);
+  const ondaArmonica = Math.sin(angulo * (2.5 + frecuencia) - tiempo * frecuencia * 2.5);
+  const ondaJagged = Math.sin(angulo * 13 - tiempo * 3.5) *
+    Math.sin(angulo * 7 + tiempo * 2.1);
+  const pulso = THREE.MathUtils.lerp(ondaJagged, ondaArmonica, factorSomatico);
+  const latido = Math.pow(Math.max(0, Math.sin(angulo * 2 - tiempo * frecuencia)), 8);
+  const amplitud = 0.35 + parametros.amplitud * 0.16;
+  const rugosidad = (1 - factorSomatico) * 0.25;
+
+  destino.set(
+    Math.cos(angulo) * (radio + pulso * (0.35 + rugosidad)),
+    1.4 + pulso * amplitud + latido * amplitud * 1.5 + ondaJagged * rugosidad,
+    Math.sin(angulo) * (radio + pulso * (0.35 + rugosidad))
+  );
 }
 
 // ======================================================
 // 05 — GENERAR CAMPO
 // ======================================================
 
+function crearCardiograma(nombre, intervalo, radio, desfase, total) {
+  const malla = new THREE.InstancedMesh(
+    geometriaEsfera,
+    materialCardiograma.clone(),
+    total
+  );
+  malla.castShadow = true;
+  malla.receiveShadow = true;
+  malla.userData = { nombre, intervalo, radio, desfase };
+  grupoCampo.add(malla);
+  cardiogramas[nombre] = malla;
+}
+
 function generarCampo() {
   limpiarCampo();
-  actualizarColorSomatico();
-
-  const ancho = (parametros.columnas - 1) * parametros.separacion;
-  const profundidad = (parametros.filas - 1) * parametros.separacion;
-
-  for (let columna = 0; columna < parametros.columnas; columna++) {
-    for (let fila = 0; fila < parametros.filas; fila++) {
-      const x = columna * parametros.separacion - ancho / 2;
-      const z = fila * parametros.separacion - profundidad / 2;
-
-      const altura = calcularAlturaModulo(x, z);
-      const rotacion = calcularRotacionModulo(x, z);
-
-      const modulo = new THREE.Mesh(geometriaModulo, materialModulo);
-
-      // Escalamos solo en Y para modificar la altura.
-      modulo.scale.y = altura;
-
-      // BoxGeometry crece hacia arriba y hacia abajo desde su centro.
-      // Por eso elevamos el módulo la mitad de su altura.
-      modulo.position.set(x, altura / 2, z);
-
-      modulo.rotation.y = rotacion;
-      modulo.castShadow = true;
-      modulo.receiveShadow = true;
-
-      grupoCampo.add(modulo);
-    }
-  }
+  const total = Math.max(80, parametros.columnas * parametros.filas);
+  crearCardiograma("A", inputA, 4.2, 0, total);
+  crearCardiograma("B", inputB, 6.5, Math.PI, total);
 }
 
 function limpiarCampo() {
-  while (grupoCampo.children.length > 0) {
-    grupoCampo.remove(grupoCampo.children[0]);
-  }
+  cardiogramas.A = null;
+  cardiogramas.B = null;
+  while (grupoCampo.children.length > 0) grupoCampo.remove(grupoCampo.children[0]);
+}
+
+function actualizarCampoAnimado() {
+  factorSomatico = THREE.MathUtils.lerp(factorSomatico, factorSomaticoObjetivo, 0.035);
+  actualizarLecturaBiometrica();
+  colorSomatico(factorSomatico, colorA);
+  colorSomatico(factorSomatico, colorB);
+  const tiempo = reloj.getElapsedTime();
+  const punto = new THREE.Vector3();
+
+  [cardiogramas.A, cardiogramas.B].forEach((malla, indiceMalla) => {
+    if (!malla) return;
+    const datos = malla.userData;
+    datos.intervalo = indiceMalla === 0 ? inputA : inputB;
+    const color = indiceMalla === 0 ? colorA : colorB;
+    malla.material.color.copy(color);
+
+    for (let indice = 0; indice < malla.count; indice++) {
+      calcularPuntoCardiograma(
+        indice,
+        malla.count,
+        datos.intervalo,
+        datos.radio,
+        datos.desfase,
+        tiempo,
+        punto
+      );
+      const escala = 0.7 + Math.abs(punto.y - 1.4) * 0.22;
+      escalaEsfera.setScalar(escala);
+      matrizEsfera.compose(punto, cuaternionIdentidad, escalaEsfera);
+      malla.setMatrixAt(indice, matrizEsfera);
+    }
+    malla.instanceMatrix.needsUpdate = true;
+  });
 }
 
 // ======================================================
@@ -224,7 +322,6 @@ const controles = {
   separacion: document.querySelector("#separacion"),
   amplitud: document.querySelector("#amplitud"),
   frecuencia: document.querySelector("#frecuencia"),
-  rotacion: document.querySelector("#rotacion"),
   aleatoriedad: document.querySelector("#aleatoriedad"),
   semilla: document.querySelector("#semilla"),
 };
@@ -235,7 +332,6 @@ const valoresVisibles = {
   separacion: document.querySelector("#separacion-valor"),
   amplitud: document.querySelector("#amplitud-valor"),
   frecuencia: document.querySelector("#frecuencia-valor"),
-  rotacion: document.querySelector("#rotacion-valor"),
   aleatoriedad: document.querySelector("#aleatoriedad-valor"),
   semilla: document.querySelector("#semilla-valor"),
 };
@@ -245,21 +341,19 @@ overlayBiometrico.className = "biometric-overlay";
 overlayBiometrico.innerHTML = `
   <div class="biometric-title">MODO HACKER · BIOFEEDBACK</div>
   <button class="biometric-connect" id="btn-conectar" type="button">CONECTAR COOSPO H6M</button>
-  <output class="biometric-status"></output>
   <output class="biometric-readout"></output>
   <label>INPUT A <input class="biometric-input-a" type="range" min="600" max="1000" step="1" /></label>
   <label>INPUT B <input class="biometric-input-b" type="range" min="600" max="1000" step="1" /></label>
-  <button class="biometric-toggle" type="button"></button>
 `;
 Object.assign(overlayBiometrico.style, {
   position: "absolute",
   top: "1rem",
   right: "1rem",
-  zIndex: "2",
+  zIndex: "10",
   width: "min(25rem, calc(100% - 2rem))",
   padding: "0.8rem",
   color: "#b8fff0",
-  background: "rgba(4, 12, 15, 0.86)",
+  background: "#040c0f",
   border: "1px solid rgba(39, 199, 217, 0.5)",
   fontFamily: "monospace",
   fontSize: "0.72rem",
@@ -272,6 +366,7 @@ overlayBiometrico.querySelectorAll("label").forEach((label) => {
   label.style.marginTop = "0.5rem";
 });
 overlayBiometrico.querySelectorAll("button").forEach((button) => {
+  button.style.display = "block";
   button.style.marginTop = "0.6rem";
   button.style.color = "#b8fff0";
   button.style.background = "transparent";
@@ -280,22 +375,20 @@ overlayBiometrico.querySelectorAll("button").forEach((button) => {
   button.style.font = "inherit";
   button.style.cursor = "pointer";
 });
+overlayBiometrico.querySelector(".biometric-readout").style.display = "block";
 viewport.appendChild(overlayBiometrico);
 
-const estadoBluetooth = overlayBiometrico.querySelector(".biometric-status");
 const lecturaBiometrica = overlayBiometrico.querySelector(".biometric-readout");
 const controlInputA = overlayBiometrico.querySelector(".biometric-input-a");
 const controlInputB = overlayBiometrico.querySelector(".biometric-input-b");
-const botonSimulacion = overlayBiometrico.querySelector(".biometric-toggle");
 const botonConectar = overlayBiometrico.querySelector("#btn-conectar");
 
 let dispositivoBluetooth = null;
 let caracteristicaFrecuenciaCardiaca = null;
-let estadoConexion = "Desconectado · simulador activo";
+let estadoConexion = "Desconectado · control manual";
 
 function actualizarEstadoBluetooth(estado) {
   estadoConexion = estado;
-  estadoBluetooth.textContent = `Estado: ${estado}`;
   actualizarLecturaBiometrica();
 }
 
@@ -325,11 +418,7 @@ function decodificarMedicionFrecuenciaCardiaca(event) {
     indice += 2;
 
     if (rrMilisegundos >= 300 && rrMilisegundos <= 2000) {
-      inputA = inputB;
-      inputB = THREE.MathUtils.clamp(rrMilisegundos, 600, 1000);
-      deltaRR = Math.abs(inputA - inputB);
-      biometria.modo = deltaRR < 15 ? "estres" : "calma";
-      generarCampo();
+      registrarIntervaloRR(rrMilisegundos);
     }
   }
 
@@ -351,8 +440,7 @@ async function conectarSensorCardiaco() {
 
     dispositivoBluetooth.addEventListener("gattserverdisconnected", () => {
       caracteristicaFrecuenciaCardiaca = null;
-      actualizarEstadoBluetooth("Desconectado · usando fallback");
-      biometria.simulacionActiva = true;
+      actualizarEstadoBluetooth("Desconectado · control manual");
       actualizarLecturaBiometrica();
     });
 
@@ -365,75 +453,45 @@ async function conectarSensorCardiaco() {
       decodificarMedicionFrecuenciaCardiaca
     );
 
-    biometria.simulacionActiva = false;
     actualizarEstadoBluetooth(`Conectado: ${dispositivoBluetooth.name || "Coospo H6M"}`);
     actualizarLecturaBiometrica();
   } catch (error) {
     caracteristicaFrecuenciaCardiaca = null;
     actualizarEstadoBluetooth(error.name === "NotFoundError" ? "Desconectado" : "Error de conexión");
-    biometria.simulacionActiva = true;
     actualizarLecturaBiometrica();
   }
 }
 
 function actualizarLecturaBiometrica() {
-  const estado = biometria.modo === "estres" ? "ESTRÉS / ALERTA" : "CALMA / TONO VAGAL";
   lecturaBiometrica.textContent =
-    `Estado: ${estadoConexion} | BPM: ${bpm || "--"} | Latido A: ${inputA} ms | Latido B: ${inputB} ms | ΔRR (HRV): ${deltaRR} ms · ${estado}`;
+    `Estado: ${estadoConexion} | BPM: ${bpm || "--"} | A: ${inputA} ms | B: ${inputB} ms | ΔRR: ${deltaRR} ms | RMSSD: ${rmssd.toFixed(1)} ms | Coherencia: ${factorSomatico.toFixed(2)} | f: ${frecuenciaCoherente.toFixed(3)} Hz`;
   controlInputA.value = inputA;
   controlInputB.value = inputB;
-  botonSimulacion.textContent = biometria.simulacionActiva
-    ? "PAUSAR SIMULACIÓN"
-    : "ACTIVAR SIMULACIÓN";
 }
 
-function actualizarBiometria(inputA, inputB) {
-  const nuevoInputA = THREE.MathUtils.clamp(Math.round(inputA), 600, 1000);
-  const nuevoInputB = THREE.MathUtils.clamp(Math.round(inputB), 600, 1000);
-  globalsBiometricas(nuevoInputA, nuevoInputB);
-  actualizarLecturaBiometrica();
-  generarCampo();
-}
-
-function globalsBiometricas(nuevoInputA, nuevoInputB) {
+function actualizarBiometria(nuevoInputA, nuevoInputB) {
+  nuevoInputA = THREE.MathUtils.clamp(Math.round(nuevoInputA), 600, 1000);
+  nuevoInputB = THREE.MathUtils.clamp(Math.round(nuevoInputB), 600, 1000);
   inputA = nuevoInputA;
   inputB = nuevoInputB;
-  deltaRR = Math.abs(inputA - inputB);
-  biometria.modo = deltaRR < 15 ? "estres" : "calma";
-}
-
-function generarLatidosSimulados() {
-  if (!biometria.simulacionActiva) return;
-
-  const modoSiguiente = biometria.modo === "estres" ? "calma" : "estres";
-  const inputA = 700 + Math.random() * 150;
-  const variacion = modoSiguiente === "estres"
-    ? Math.random() * 14 - 7
-    : 50 + Math.random() * 20;
-
-  actualizarBiometria(inputA, inputA + variacion);
+  intervalosRR.splice(0, intervalosRR.length, nuevoInputA, nuevoInputB);
+  actualizarTendenciaBiometrica();
+  actualizarLecturaBiometrica();
 }
 
 botonConectar.addEventListener("click", conectarSensorCardiaco);
-actualizarEstadoBluetooth("Desconectado · simulador activo");
+actualizarTendenciaBiometrica();
+actualizarEstadoBluetooth("Desconectado · control manual");
 
 controlInputA.addEventListener("input", (event) => {
-  biometria.simulacionActiva = false;
   actualizarBiometria(event.target.value, inputB);
 });
 
 controlInputB.addEventListener("input", (event) => {
-  biometria.simulacionActiva = false;
   actualizarBiometria(inputA, event.target.value);
 });
 
-botonSimulacion.addEventListener("click", () => {
-  biometria.simulacionActiva = !biometria.simulacionActiva;
-  actualizarLecturaBiometrica();
-});
-
 actualizarLecturaBiometrica();
-setInterval(generarLatidosSimulados, DURACION_CAMBIO_BIOMETRICO);
 
 function actualizarParametro(nombre, valor) {
   const parametrosEnteros = ["columnas", "filas", "semilla"];
@@ -488,6 +546,7 @@ function animar() {
   requestAnimationFrame(animar);
 
   controlesOrbita.update();
+  actualizarCampoAnimado();
   renderer.render(escena, camara);
 }
 
