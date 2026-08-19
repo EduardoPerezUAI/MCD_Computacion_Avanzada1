@@ -17,10 +17,12 @@ const valoresIniciales = {
 };
 const parametros = { ...valoresIniciales };
 
+let inputA = 780;
+let inputB = 772;
+let deltaRR = 8;
+let bpm = 0;
+
 const biometria = {
-  inputA: 780,
-  inputB: 772,
-  deltaRR: 8,
   simulacionActiva: true,
   modo: "estres",
 };
@@ -118,8 +120,8 @@ const materialModulo = new THREE.MeshStandardMaterial({
 // posición → distancia al centro → onda → altura
 function calcularAlturaModulo(x, z) {
   const distancia = Math.sqrt(x * x + z * z);
-  const pulso = (biometria.inputA + biometria.inputB) / 2 / 800;
-  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const pulso = (inputA + inputB) / 2 / 800;
+  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
   const ondaSuave = Math.sin(distancia * parametros.frecuencia) * parametros.amplitud;
   const ondaTensa =
     Math.sin(x * parametros.frecuencia * 2.4 + z * 0.8) *
@@ -136,13 +138,13 @@ function calcularAlturaModulo(x, z) {
 // la orientación depende de la dirección radial respecto al centro.
 function calcularRotacionModulo(x, z) {
   const direccion = Math.atan2(z, x);
-  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
   const torsion = Math.sin((x - z) * parametros.frecuencia * 1.8) * tension * 0.5;
   return direccion * parametros.rotacion * (0.65 + tension * 1.35) + torsion;
 }
 
 function actualizarColorSomatico() {
-  const tension = THREE.MathUtils.clamp(1 - biometria.deltaRR / 70, 0, 1);
+  const tension = THREE.MathUtils.clamp(1 - deltaRR / 70, 0, 1);
   const colorCalma = new THREE.Color(0x27c7d9);
   const colorTension = new THREE.Color(0xf04438);
 
@@ -242,6 +244,8 @@ const overlayBiometrico = document.createElement("aside");
 overlayBiometrico.className = "biometric-overlay";
 overlayBiometrico.innerHTML = `
   <div class="biometric-title">MODO HACKER · BIOFEEDBACK</div>
+  <button class="biometric-connect" id="btn-conectar" type="button">CONECTAR COOSPO H6M</button>
+  <output class="biometric-status"></output>
   <output class="biometric-readout"></output>
   <label>INPUT A <input class="biometric-input-a" type="range" min="600" max="1000" step="1" /></label>
   <label>INPUT B <input class="biometric-input-b" type="range" min="600" max="1000" step="1" /></label>
@@ -267,32 +271,135 @@ overlayBiometrico.querySelectorAll("label").forEach((label) => {
   label.style.gap = "0.2rem";
   label.style.marginTop = "0.5rem";
 });
-overlayBiometrico.querySelector(".biometric-toggle").style.marginTop = "0.6rem";
+overlayBiometrico.querySelectorAll("button").forEach((button) => {
+  button.style.marginTop = "0.6rem";
+  button.style.color = "#b8fff0";
+  button.style.background = "transparent";
+  button.style.border = "1px solid rgba(184, 255, 240, 0.45)";
+  button.style.padding = "0.35rem 0.5rem";
+  button.style.font = "inherit";
+  button.style.cursor = "pointer";
+});
 viewport.appendChild(overlayBiometrico);
 
+const estadoBluetooth = overlayBiometrico.querySelector(".biometric-status");
 const lecturaBiometrica = overlayBiometrico.querySelector(".biometric-readout");
 const controlInputA = overlayBiometrico.querySelector(".biometric-input-a");
 const controlInputB = overlayBiometrico.querySelector(".biometric-input-b");
 const botonSimulacion = overlayBiometrico.querySelector(".biometric-toggle");
+const botonConectar = overlayBiometrico.querySelector("#btn-conectar");
+
+let dispositivoBluetooth = null;
+let caracteristicaFrecuenciaCardiaca = null;
+let estadoConexion = "Desconectado · simulador activo";
+
+function actualizarEstadoBluetooth(estado) {
+  estadoConexion = estado;
+  estadoBluetooth.textContent = `Estado: ${estado}`;
+  actualizarLecturaBiometrica();
+}
+
+function decodificarMedicionFrecuenciaCardiaca(event) {
+  const datos = event.target.value;
+  if (!datos || datos.byteLength < 2) return;
+
+  const banderas = datos.getUint8(0);
+  const usaHR16Bits = (banderas & 0x01) !== 0;
+  const tieneRR = (banderas & 0x10) !== 0;
+  let indice = 1;
+
+  bpm = usaHR16Bits ? datos.getUint16(indice, true) : datos.getUint8(indice);
+  indice += usaHR16Bits ? 2 : 1;
+
+  if ((banderas & 0x08) !== 0) indice += 2;
+
+  if (!tieneRR || indice + 1 >= datos.byteLength) {
+    actualizarLecturaBiometrica();
+    return;
+  }
+
+  // Bluetooth SIG transmite RR en unidades de 1/1024 de segundo.
+  while (indice + 1 < datos.byteLength) {
+    const rrEnUnidadesBluetooth = datos.getUint16(indice, true);
+    const rrMilisegundos = Math.round((rrEnUnidadesBluetooth * 1000) / 1024);
+    indice += 2;
+
+    if (rrMilisegundos >= 300 && rrMilisegundos <= 2000) {
+      inputA = inputB;
+      inputB = THREE.MathUtils.clamp(rrMilisegundos, 600, 1000);
+      deltaRR = Math.abs(inputA - inputB);
+      biometria.modo = deltaRR < 15 ? "estres" : "calma";
+      generarCampo();
+    }
+  }
+
+  actualizarLecturaBiometrica();
+}
+
+async function conectarSensorCardiaco() {
+  if (!navigator.bluetooth) {
+    actualizarEstadoBluetooth("Bluetooth no disponible en este navegador");
+    return;
+  }
+
+  try {
+    actualizarEstadoBluetooth("Buscando sensor...");
+    dispositivoBluetooth = await navigator.bluetooth.requestDevice({
+      filters: [{ services: ["heart_rate"] }],
+      optionalServices: ["heart_rate"],
+    });
+
+    dispositivoBluetooth.addEventListener("gattserverdisconnected", () => {
+      caracteristicaFrecuenciaCardiaca = null;
+      actualizarEstadoBluetooth("Desconectado · usando fallback");
+      biometria.simulacionActiva = true;
+      actualizarLecturaBiometrica();
+    });
+
+    const servidor = await dispositivoBluetooth.gatt.connect();
+    const servicio = await servidor.getPrimaryService("heart_rate");
+    caracteristicaFrecuenciaCardiaca = await servicio.getCharacteristic("heart_rate_measurement");
+    await caracteristicaFrecuenciaCardiaca.startNotifications();
+    caracteristicaFrecuenciaCardiaca.addEventListener(
+      "characteristicvaluechanged",
+      decodificarMedicionFrecuenciaCardiaca
+    );
+
+    biometria.simulacionActiva = false;
+    actualizarEstadoBluetooth(`Conectado: ${dispositivoBluetooth.name || "Coospo H6M"}`);
+    actualizarLecturaBiometrica();
+  } catch (error) {
+    caracteristicaFrecuenciaCardiaca = null;
+    actualizarEstadoBluetooth(error.name === "NotFoundError" ? "Desconectado" : "Error de conexión");
+    biometria.simulacionActiva = true;
+    actualizarLecturaBiometrica();
+  }
+}
 
 function actualizarLecturaBiometrica() {
   const estado = biometria.modo === "estres" ? "ESTRÉS / ALERTA" : "CALMA / TONO VAGAL";
   lecturaBiometrica.textContent =
-    `Latido A: ${biometria.inputA} ms | Latido B: ${biometria.inputB} ms | ΔRR (HRV): ${biometria.deltaRR} ms · ${estado}`;
-  controlInputA.value = biometria.inputA;
-  controlInputB.value = biometria.inputB;
+    `Estado: ${estadoConexion} | BPM: ${bpm || "--"} | Latido A: ${inputA} ms | Latido B: ${inputB} ms | ΔRR (HRV): ${deltaRR} ms · ${estado}`;
+  controlInputA.value = inputA;
+  controlInputB.value = inputB;
   botonSimulacion.textContent = biometria.simulacionActiva
     ? "PAUSAR SIMULACIÓN"
     : "ACTIVAR SIMULACIÓN";
 }
 
 function actualizarBiometria(inputA, inputB) {
-  biometria.inputA = THREE.MathUtils.clamp(Math.round(inputA), 600, 1000);
-  biometria.inputB = THREE.MathUtils.clamp(Math.round(inputB), 600, 1000);
-  biometria.deltaRR = Math.abs(biometria.inputA - biometria.inputB);
-  biometria.modo = biometria.deltaRR < 15 ? "estres" : "calma";
+  const nuevoInputA = THREE.MathUtils.clamp(Math.round(inputA), 600, 1000);
+  const nuevoInputB = THREE.MathUtils.clamp(Math.round(inputB), 600, 1000);
+  globalsBiometricas(nuevoInputA, nuevoInputB);
   actualizarLecturaBiometrica();
   generarCampo();
+}
+
+function globalsBiometricas(nuevoInputA, nuevoInputB) {
+  inputA = nuevoInputA;
+  inputB = nuevoInputB;
+  deltaRR = Math.abs(inputA - inputB);
+  biometria.modo = deltaRR < 15 ? "estres" : "calma";
 }
 
 function generarLatidosSimulados() {
@@ -307,14 +414,17 @@ function generarLatidosSimulados() {
   actualizarBiometria(inputA, inputA + variacion);
 }
 
+botonConectar.addEventListener("click", conectarSensorCardiaco);
+actualizarEstadoBluetooth("Desconectado · simulador activo");
+
 controlInputA.addEventListener("input", (event) => {
   biometria.simulacionActiva = false;
-  actualizarBiometria(event.target.value, biometria.inputB);
+  actualizarBiometria(event.target.value, inputB);
 });
 
 controlInputB.addEventListener("input", (event) => {
   biometria.simulacionActiva = false;
-  actualizarBiometria(biometria.inputA, event.target.value);
+  actualizarBiometria(inputA, event.target.value);
 });
 
 botonSimulacion.addEventListener("click", () => {
