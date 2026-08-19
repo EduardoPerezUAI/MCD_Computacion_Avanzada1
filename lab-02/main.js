@@ -44,7 +44,7 @@ const camara = new THREE.PerspectiveCamera(
   200
 );
 
-camara.position.set(18, 16, 18);
+camara.position.set(0, 5, 19);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -57,7 +57,7 @@ viewport.appendChild(renderer.domElement);
 
 const controlesOrbita = new OrbitControls(camara, renderer.domElement);
 controlesOrbita.enableDamping = true;
-controlesOrbita.target.set(0, 1.2, 0);
+controlesOrbita.target.set(0, 0, 0);
 
 // Iluminación general.
 const luzAmbiente = new THREE.AmbientLight(0xdcecff, 2.2);
@@ -104,11 +104,12 @@ escena.add(grilla);
 const grupoCampo = new THREE.Group();
 escena.add(grupoCampo);
 
-const geometriaEsfera = new THREE.SphereGeometry(0.12, 12, 8);
-const materialCardiograma = new THREE.MeshBasicMaterial({
-  color: 0xffffff,
-});
-const cardiogramas = { A: null, B: null };
+const DURACION_CINTA = 10;
+const MUESTRAS_CINTA = 260;
+const geometriaEsfera = new THREE.SphereGeometry(0.14, 10, 8);
+const materialCinta = new THREE.MeshBasicMaterial({ transparent: true, opacity: 1 });
+const cintas = { A: null, B: null };
+const registroTemporal = [];
 const reloj = new THREE.Clock();
 const colorA = new THREE.Color();
 const colorB = new THREE.Color();
@@ -118,6 +119,7 @@ const colorCalma = new THREE.Color(0x35ffd0);
 const matrizEsfera = new THREE.Matrix4();
 const escalaEsfera = new THREE.Vector3();
 const cuaternionIdentidad = new THREE.Quaternion();
+const puntoCinta = new THREE.Vector3();
 
 // ======================================================
 // 04 — REGLAS GENERATIVAS
@@ -198,6 +200,11 @@ function registrarIntervaloRR(intervalo) {
   inputB = intervaloSeguro;
   intervalosRR.push(intervaloSeguro);
   if (intervalosRR.length > VENTANA_RR) intervalosRR.shift();
+  registroTemporal.push({
+    tiempo: performance.now(),
+    a: inputA,
+    b: inputB,
+  });
   actualizarTendenciaBiometrica();
   actualizarLecturaBiometrica();
 }
@@ -210,52 +217,45 @@ function colorSomatico(factor, destino) {
   }
 }
 
-function calcularPuntoCardiograma(indice, total, intervalo, radio, desfase, tiempo, destino) {
-  const progreso = indice / (total - 1);
-  const angulo = progreso * Math.PI * 2 + desfase;
-  const frecuencia = 1000 / Math.max(intervalo, 1);
-  const ondaArmonica = Math.sin(angulo * (2.5 + frecuencia) - tiempo * frecuencia * 2.5);
-  const ondaJagged = Math.sin(angulo * 13 - tiempo * 3.5) *
-    Math.sin(angulo * 7 + tiempo * 2.1);
-  const pulso = THREE.MathUtils.lerp(ondaJagged, ondaArmonica, factorSomatico);
-  const latido = Math.pow(Math.max(0, Math.sin(angulo * 2 - tiempo * frecuencia)), 8);
-  const amplitud = 0.35 + parametros.amplitud * 0.16;
-  const rugosidad = (1 - factorSomatico) * 0.25;
+function calcularPuntoCinta(progreso, intervalo, baseZ, fase, tiempo, destino) {
+  const frecuenciaRR = 1000 / Math.max(intervalo, 1);
+  const ondaLimpia = Math.sin(progreso * Math.PI * 2 * 5 + fase);
+  const ondaAserrada = Math.sin(progreso * Math.PI * 2 * 19 + fase * 2) *
+    Math.sin(progreso * Math.PI * 2 * 7 - fase);
+  const pulso = THREE.MathUtils.lerp(ondaAserrada, ondaLimpia, factorSomatico);
+  const impulso = Math.pow(Math.max(0, Math.sin(progreso * Math.PI * 2 * 2 + fase)), 10);
+  const amplitud = 0.35 + parametros.amplitud * 0.14;
+  const rugosidad = (1 - factorSomatico) * 0.35;
 
   destino.set(
-    Math.cos(angulo) * (radio + pulso * (0.35 + rugosidad)),
-    1.4 + pulso * amplitud + latido * amplitud * 1.5 + ondaJagged * rugosidad,
-    Math.sin(angulo) * (radio + pulso * (0.35 + rugosidad))
+    THREE.MathUtils.lerp(-10, 10, progreso),
+    baseZ + pulso * amplitud + impulso * amplitud * 1.6 + ondaAserrada * rugosidad,
+    0.25 * Math.sin(progreso * Math.PI * 2 * frecuenciaRR + tiempo) + baseZ
   );
 }
 
 // ======================================================
-// 05 — GENERAR CAMPO
+// 05 — GENERAR CINTA TEMPORAL
 // ======================================================
 
-function crearCardiograma(nombre, intervalo, radio, desfase, total) {
-  const malla = new THREE.InstancedMesh(
-    geometriaEsfera,
-    materialCardiograma.clone(),
-    total
-  );
+function crearCinta(nombre, baseZ, color) {
+  const malla = new THREE.InstancedMesh(geometriaEsfera, materialCinta.clone(), MUESTRAS_CINTA);
   malla.castShadow = true;
   malla.receiveShadow = true;
-  malla.userData = { nombre, intervalo, radio, desfase };
+  malla.userData = { nombre, baseZ, color };
   grupoCampo.add(malla);
-  cardiogramas[nombre] = malla;
+  cintas[nombre] = malla;
 }
 
 function generarCampo() {
   limpiarCampo();
-  const total = Math.max(80, parametros.columnas * parametros.filas);
-  crearCardiograma("A", inputA, 4.2, 0, total);
-  crearCardiograma("B", inputB, 6.5, Math.PI, total);
+  crearCinta("A", 1.5, colorA);
+  crearCinta("B", -1.5, colorB);
 }
 
 function limpiarCampo() {
-  cardiogramas.A = null;
-  cardiogramas.B = null;
+  cintas.A = null;
+  cintas.B = null;
   while (grupoCampo.children.length > 0) grupoCampo.remove(grupoCampo.children[0]);
 }
 
@@ -264,33 +264,48 @@ function actualizarCampoAnimado() {
   actualizarLecturaBiometrica();
   colorSomatico(factorSomatico, colorA);
   colorSomatico(factorSomatico, colorB);
+  const ahora = performance.now();
   const tiempo = reloj.getElapsedTime();
-  const punto = new THREE.Vector3();
 
-  [cardiogramas.A, cardiogramas.B].forEach((malla, indiceMalla) => {
+  while (registroTemporal.length > 0 && ahora - registroTemporal[0].tiempo > DURACION_CINTA * 1000) {
+    registroTemporal.shift();
+  }
+
+  [cintas.A, cintas.B].forEach((malla, indiceMalla) => {
     if (!malla) return;
-    const datos = malla.userData;
-    datos.intervalo = indiceMalla === 0 ? inputA : inputB;
     const color = indiceMalla === 0 ? colorA : colorB;
     malla.material.color.copy(color);
 
     for (let indice = 0; indice < malla.count; indice++) {
-      calcularPuntoCardiograma(
-        indice,
-        malla.count,
-        datos.intervalo,
-        datos.radio,
-        datos.desfase,
-        tiempo,
-        punto
-      );
-      const escala = 0.7 + Math.abs(punto.y - 1.4) * 0.22;
+      const edad = (indice / (malla.count - 1)) * DURACION_CINTA;
+      const marcaTemporal = ahora - edad * 1000;
+      const muestra = interpolarRegistro(marcaTemporal, indiceMalla === 0 ? "a" : "b");
+      const progreso = indice / (malla.count - 1);
+      const opacidadTemporal = THREE.MathUtils.clamp(1 - edad / DURACION_CINTA, 0, 1);
+      const fase = tiempo * 0.8 + (1 - progreso) * 0.4;
+
+      calcularPuntoCinta(progreso, muestra, malla.userData.baseZ, fase, tiempo, puntoCinta);
+      const escala = opacidadTemporal * (0.35 + Math.abs(puntoCinta.y - malla.userData.baseZ) * 0.35);
       escalaEsfera.setScalar(escala);
-      matrizEsfera.compose(punto, cuaternionIdentidad, escalaEsfera);
+      matrizEsfera.compose(puntoCinta, cuaternionIdentidad, escalaEsfera);
       malla.setMatrixAt(indice, matrizEsfera);
     }
     malla.instanceMatrix.needsUpdate = true;
   });
+}
+
+function interpolarRegistro(marcaTemporal, clave) {
+  if (registroTemporal.length === 0) return clave === "a" ? inputA : inputB;
+  if (marcaTemporal <= registroTemporal[0].tiempo) return registroTemporal[0][clave];
+  for (let indice = 1; indice < registroTemporal.length; indice++) {
+    const anterior = registroTemporal[indice - 1];
+    const siguiente = registroTemporal[indice];
+    if (marcaTemporal <= siguiente.tiempo) {
+      const proporcion = (marcaTemporal - anterior.tiempo) / (siguiente.tiempo - anterior.tiempo);
+      return THREE.MathUtils.lerp(anterior[clave], siguiente[clave], proporcion);
+    }
+  }
+  return registroTemporal[registroTemporal.length - 1][clave];
 }
 
 // ======================================================
@@ -350,13 +365,13 @@ Object.assign(overlayBiometrico.style, {
   top: "1rem",
   right: "1rem",
   zIndex: "10",
-  width: "min(25rem, calc(100% - 2rem))",
-  padding: "0.8rem",
+  width: "min(16rem, calc(100% - 1rem))",
+  padding: "0.45rem",
   color: "#b8fff0",
   background: "#040c0f",
   border: "1px solid rgba(39, 199, 217, 0.5)",
   fontFamily: "monospace",
-  fontSize: "0.72rem",
+  fontSize: "0.56rem",
   lineHeight: "1.5",
   boxSizing: "border-box",
 });
@@ -475,6 +490,11 @@ function actualizarBiometria(nuevoInputA, nuevoInputB) {
   inputA = nuevoInputA;
   inputB = nuevoInputB;
   intervalosRR.splice(0, intervalosRR.length, nuevoInputA, nuevoInputB);
+  registroTemporal.push({
+    tiempo: performance.now(),
+    a: inputA,
+    b: inputB,
+  });
   actualizarTendenciaBiometrica();
   actualizarLecturaBiometrica();
 }
@@ -482,6 +502,11 @@ function actualizarBiometria(nuevoInputA, nuevoInputB) {
 botonConectar.addEventListener("click", conectarSensorCardiaco);
 actualizarTendenciaBiometrica();
 actualizarEstadoBluetooth("Desconectado · control manual");
+registroTemporal.push({
+  tiempo: performance.now(),
+  a: inputA,
+  b: inputB,
+});
 
 controlInputA.addEventListener("input", (event) => {
   actualizarBiometria(event.target.value, inputB);
