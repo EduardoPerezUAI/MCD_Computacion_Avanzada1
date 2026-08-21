@@ -170,6 +170,16 @@ code {
   margin-top: 18px;
 }
 
+model-viewer {
+  display: block;
+  width: 100%;
+  height: min(62vw, 520px);
+  min-height: 320px;
+  background: #1a1b1d;
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

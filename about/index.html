@@ -9,6 +9,7 @@
     >
     <title>Eduardo Perez Infante | Computación Avanzada</title>
     <link rel="stylesheet" href="../styles.css">
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@google/model-viewer@4.1.0/dist/model-viewer.min.js"></script>
   </head>
   <body>
     <main class="page">
@@ -65,9 +66,23 @@
       <section class="section">
         <h2>Algo que me inspira</h2>
         <div class="media-note">
-          <img src="../assets/images/ProyectosRTD.jpg" alt="Estado del arte en investigación a través del diseño">
+          <img src="../assets/images/ProyectosRTD.png" alt="Estado del arte en investigación a través del diseño">
           <p><a href="https://nuropod.com/es">Nuropod</a></p>
         </div>
+      </section>
+
+      <section class="section">
+        <h2>Modelo 3D</h2>
+        <model-viewer
+          src="../assets/models/FiguraRecuay.glb"
+          alt="Figura Recuay en tres dimensiones"
+          camera-controls
+          interaction-prompt="auto"
+          shadow-intensity="1"
+          exposure="1"
+          environment-image="neutral"
+          loading="eager">
+        </model-viewer>
       </section>
 
       <section class="section">

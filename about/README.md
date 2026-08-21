@@ -24,16 +24,16 @@
 
 ## Una pregunta que me interesa explorar
 
-Qué artefactos de diseño nos permiten sensar, visualizar y comprender un fenómeno fisiológico complejo como lo es la respuesta ante el estrés o el dolor emocional. 
-En el contexto temático del duelo animal, qué posibles respuestas permiten las herramientas de computación avanzada en su capacidad para generar sistemas en base a datos. 
-Puede esta capacidad de sensabilidad y responsibilidad contruibuir a un diseño sensible y responsable?
+- Qué artefactos de diseño nos permiten sensar, visualizar y comprender un fenómeno fisiológico complejo como lo es la respuesta ante el estrés o el dolor emocional. 
+- En el contexto temático del duelo animal, qué posibles respuestas permiten las herramientas de computación avanzada en su capacidad para generar sistemas en base a datos. 
+- Puede esta capacidad de sensabilidad y responsibilidad contruibuir a un diseño sensible y responsable?
 
 
 
 ## Algo que me inspira
 
 
-![Modelo](../assets/models/FiguraRecuay.glb)
+[Ver Figura Recuay en el visor 3D](./)
 
 
 
