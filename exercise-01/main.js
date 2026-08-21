@@ -30,6 +30,7 @@ let mediaRRVisual = (inputA + inputB) / 2;
 let frecuenciaLatido = 1000 / mediaRRVisual;
 let frecuenciaCoherente = 0;
 let dispersionRR = 0;
+let pulsoRadial = 0;
 
 // ======================================================
 // 02 — ESCENA
@@ -172,7 +173,7 @@ function calcularCoherenciaRR() {
   }
 
   const desviacion = Math.sqrt(energia / intervalosRR.length);
-  const dispersionNormalizada = THREE.MathUtils.clamp(desviacion / 45, 0, 1);
+  const dispersionNormalizada = THREE.MathUtils.clamp(desviacion / 55, 0, 1);
   let dispersionDiferencias = 0;
   for (let indice = 1; indice < centrados.length; indice++) {
     dispersionDiferencias += Math.abs(centrados[indice] - centrados[indice - 1]);
@@ -279,17 +280,20 @@ function actualizarAnillo(tiempo) {
     ? frecuenciaLatido
     : frecuenciaLatido * parametros.frecuencia;
   const radioBase = 4.6;
-  const pulsacionObjetivo = Math.sin(tiempo * frecuenciaRitmo * Math.PI * 2) *
-    parametros.amplitud * 0.004;
-  const pulsacion = THREE.MathUtils.lerp(0, pulsacionObjetivo, 0.025);
+  const faseCardiaca = tiempo * frecuenciaRitmo * Math.PI * 2;
+  const pulsoObjetivo = Math.sin(faseCardiaca) * parametros.amplitud * 0.012;
+  pulsoRadial = THREE.MathUtils.lerp(pulsoRadial, pulsoObjetivo, 0.08);
   const grosorPerfil = THREE.MathUtils.lerp(0.012, parametros.dispersión, factorSomatico);
 
   for (let indice = 0; indice < cantidad; indice++) {
     const progreso = indice / cantidad;
     const angulo = progreso * Math.PI * 2;
     const ruido = ruidoAutomatico[indice % ruidoAutomatico.length] || 0;
+    const faseParticula = faseCardiaca + ruido * 0.35;
+    const contraccionRadial = Math.sin(faseParticula) * pulsoRadial * 0.35;
     const dispersionAleatoria = ruido * parametros.aleatoriedad * grosorPerfil * 0.35;
-    const radio = radioBase * (1 + pulsacion) + ruido * grosorPerfil + dispersionAleatoria;
+    const radio = radioBase + pulsoRadial + ruido * grosorPerfil +
+      dispersionAleatoria + contraccionRadial;
 
     const x = Math.cos(angulo) * radio;
     const y = Math.sin(angulo) * radio;
