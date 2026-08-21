@@ -10,7 +10,7 @@ const valoresIniciales = {
   filas: 15,
   separacion: 1.2,
   amplitud: 3.0,
-  frecuencia: 0.4,
+  frecuencia: 0.2,
   rotacion: 0.3,
   aleatoriedad: 0.0,
   semilla: 42,
