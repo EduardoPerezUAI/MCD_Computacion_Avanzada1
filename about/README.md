@@ -15,7 +15,7 @@
 - El Juego como fenómeno cultural y como entrada al diseño
 - Comportamiento humano, neurociencia, biohacking
 
-```md
+
 
 ![tags](../assets/images/tags.png)
 ## Links
