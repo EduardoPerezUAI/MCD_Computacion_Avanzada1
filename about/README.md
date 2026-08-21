@@ -2,38 +2,47 @@
 
 ## Perfil
 
-**Disciplina / formación:**  Arquitecto, Estudios de las Comunicaciones
+**Disciplina / formación:**  Arquitecto, Estudios de las Comunicaciones. 
+**Qué hago hoy:** Producción Técnica y Artística, Administración.
+**Qué me gustaría aprender en este curso:**  Expandir mi comprensión de lo que es un artefacto de diseño.  Me interesa la capacidad que estas herramientas tienen para capturar fenómenos  y producir sistemas de respuesta. 
 
-**Qué hago hoy:**  Administración, producción técnica de arte
-**Qué me gustaría aprender en este curso:**  Visualizar y compartir data, integrar data como parametros de diseño
+
 
 ## Intereses
 
-- Dimension performativa del diseño.
+- Dimensión performativa del diseño:
+- Ciclismo, natacion, tenis. Me gusta la práctica de estos deportes y me interesa la métrica deportiva.
 - El Juego como fenómeno cultural y como entrada al diseño
-- Deportes: ciclismo, natacion, tenis
+- Comportamiento humano, neurociencia, biohacking
+
+```md
+
+![tags](../assets/images/tags.png)
+## Links
 
 
 ## Una pregunta que me interesa explorar
 
-Escribe una pregunta pequeña que pueda transformarse en reglas, datos, geometría, imágenes o interacción.
+Qué artefactos de diseño nos permiten sensar, visualizar y comprender un fenómeno fisiológico complejo como lo es la respuesta ante el estrés o el dolor emocional. 
+En el contexto temático del duelo animal, qué posibles respuestas permiten las herramientas de computación avanzada en su capacidad para generar sistemas en base a datos. 
+Puede esta capacidad de sensabilidad y responsibilidad contruibuir a un diseño sensible y responsable?
 
 
 
 ## Algo que me inspira
 
-Agrega una imagen local en `assets/images/` y cítala con Markdown, o agrega un link a un proyecto/referencia.
 
-![Modelo](../assets/models/replica_cabeza_recuay.glb)
+![Modelo](../assets/models/FiguraRecuay.glb)
+
 
 
 ```md
-![Descripción de la imagen](../assets/images/mi-imagen.jpg)
-```
-![Gracias por existir](../assets/images/gracias.jpg)
+![Estado del arte en RTD](../assets/images/ProyectosRTD.jpg)
+![Estado del arte en RTD](../assets/images/nuropod.webp)
+- [Nuropod](https://nuropod.com/es)
+
 ## Links
 
-- [Referencia 1](https://example.com)
-- [Referencia 2](https://example.com)
+- [Referencia 1](https://perezinfante.com/)
+- [Referencia 2](https://www.instagram.com/_kite_club_/)
 
-> No es necesario publicar información personal que no quieras compartir. Este README será parte de un repositorio público durante el laboratorio.
