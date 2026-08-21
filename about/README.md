@@ -10,7 +10,7 @@
 
 ## Intereses
 
-- Dimensión performativa del diseño:
+- Dimensión performativa del diseño
 - Ciclismo, natacion, tenis. Me gusta la práctica de estos deportes y me interesa la métrica deportiva.
 - El Juego como fenómeno cultural y como entrada al diseño
 - Comportamiento humano, neurociencia, biohacking
