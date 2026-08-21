@@ -7,7 +7,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const valoresIniciales = {
   densidad: 1800,
-  dispersión: 2.4,
+  dispersión: 0.8,
   amplitud: 3.0,
   frecuencia: 0.4,
   aleatoriedad: 0.0,
@@ -20,7 +20,7 @@ let inputB = 772;
 let deltaRR = 8;
 let bpm = 0;
 const VENTANA_RR = 12;
-const MIN_RR = 600;
+const MIN_RR = 400;
 const MAX_RR = 1200;
 const intervalosRR = [inputA, inputB];
 let rmssd = 0;
@@ -60,6 +60,7 @@ viewport.appendChild(renderer.domElement);
 
 const controlesOrbita = new OrbitControls(camara, renderer.domElement);
 controlesOrbita.enableDamping = true;
+controlesOrbita.enableRotate = false;
 controlesOrbita.target.set(0, 0, 0);
 
 // Iluminación general.
@@ -274,28 +275,25 @@ function actualizarAnillo(tiempo) {
   const colores = atributoColor.array;
   const cantidad = atributoPosicion.count;
 
-  const frecuenciaRitmo = frecuenciaLatido;
-  const radioExpandido = THREE.MathUtils.mapLinear(mediaRRVisual, MIN_RR, MAX_RR, 3.8, 5.8);
-  const baseRadius = THREE.MathUtils.lerp(0.85, radioExpandido, factorSomatico);
-  const pulsacion = Math.sin(tiempo * frecuenciaRitmo * Math.PI * 2) *
-    parametros.amplitud * 0.06;
-  const anchoBanda = factorSomatico * parametros.dispersión;
+  const frecuenciaRitmo = caracteristicaFrecuenciaCardiaca
+    ? frecuenciaLatido
+    : frecuenciaLatido * parametros.frecuencia;
+  const radioBase = 4.6;
+  const pulsacionObjetivo = Math.sin(tiempo * frecuenciaRitmo * Math.PI * 2) *
+    parametros.amplitud * 0.004;
+  const pulsacion = THREE.MathUtils.lerp(0, pulsacionObjetivo, 0.025);
+  const grosorPerfil = THREE.MathUtils.lerp(0.012, parametros.dispersión, factorSomatico);
 
   for (let indice = 0; indice < cantidad; indice++) {
     const progreso = indice / cantidad;
-    const angulo = progreso * Math.PI * 2 + ruidoAutomatico[indice] * 0.012;
+    const angulo = progreso * Math.PI * 2;
     const ruido = ruidoAutomatico[indice % ruidoAutomatico.length] || 0;
-    const onda = Math.sin(angulo * 7 + tiempo * frecuenciaRitmo * 0.8);
-    const ruidoRadial = ruido * parametros.aleatoriedad + onda * 0.2;
-    const radio = baseRadius * (1 + pulsacion) +
-      ruidoRadial * anchoBanda;
+    const dispersionAleatoria = ruido * parametros.aleatoriedad * grosorPerfil * 0.35;
+    const radio = radioBase * (1 + pulsacion) + ruido * grosorPerfil + dispersionAleatoria;
 
-    const xAjuste = Math.sin(angulo * 2 + tiempo * 0.35) * anchoBanda * 0.12;
-    const yAjuste = Math.cos(angulo * 2 + tiempo * 0.35) * anchoBanda * 0.12;
-
-    const x = Math.cos(angulo) * radio + xAjuste;
-    const y = Math.sin(angulo) * radio + yAjuste;
-    const z = Math.sin(angulo * 4 + tiempo * 0.35) * anchoBanda * 0.35;
+    const x = Math.cos(angulo) * radio;
+    const y = Math.sin(angulo) * radio;
+    const z = 0;
 
     const index = indice * 3;
     posiciones[index] = x;
@@ -325,12 +323,10 @@ function actualizarCampoAnimado() {
 }
 
 function actualizarSimulacionAutomatica(tiempo) {
-  // RR fisiológico: 400-1200 ms, con una oscilación lenta que recorre calma y estrés.
-  const factorSimulado = (Math.sin(tiempo * 0.16) + 1) / 2;
+  const factorSimulado = (Math.sin(tiempo * 0.03) + 1) / 2;
   const intervaloSimulado = THREE.MathUtils.lerp(400, 1200, factorSimulado);
-  const variacion = Math.sin(tiempo * 1.4) * 8;
-  inputA = Math.round(THREE.MathUtils.clamp(intervaloSimulado - variacion, MIN_RR, MAX_RR));
-  inputB = Math.round(THREE.MathUtils.clamp(intervaloSimulado + variacion, MIN_RR, MAX_RR));
+  inputA = Math.round(THREE.MathUtils.lerp(inputA, intervaloSimulado, 0.015));
+  inputB = Math.round(THREE.MathUtils.lerp(inputB, intervaloSimulado, 0.015));
   mediaRRVisual = THREE.MathUtils.lerp(mediaRRVisual, intervaloSimulado, 0.08);
   bpm = Math.round(60000 / mediaRRVisual);
   factorSomaticoObjetivo = factorSimulado;
@@ -385,8 +381,8 @@ overlayBiometrico.innerHTML = `
   <div class="biometric-title">MODO HACKER · BIOFEEDBACK</div>
   <button class="biometric-connect" id="btn-conectar" type="button">CONECTAR COOSPO H6M</button>
   <output class="biometric-readout"></output>
-  <label>INPUT A <input class="biometric-input-a" type="range" min="600" max="1200" step="1" /></label>
-  <label>INPUT B <input class="biometric-input-b" type="range" min="600" max="1200" step="1" /></label>
+  <label>INPUT A <input class="biometric-input-a" type="range" min="400" max="1200" step="1" /></label>
+  <label>INPUT B <input class="biometric-input-b" type="range" min="400" max="1200" step="1" /></label>
 `;
 Object.assign(overlayBiometrico.style, {
   position: "absolute",
