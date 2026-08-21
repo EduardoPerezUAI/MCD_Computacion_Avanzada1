@@ -22,7 +22,7 @@
       <div id="viewport"></div>
 
       <div class="hint">
-        Rueda para acercar · Click derecho para desplazar
+        Arrastra para orbitar · Rueda para acercar · Click derecho para desplazar
       </div>
     </section>
 
@@ -39,6 +39,12 @@
           <span>Densidad</span>
           <output id="densidad-valor">1800</output>
           <input id="densidad" type="range" min="400" max="5000" step="100" value="1800" />
+        </label>
+
+        <label>
+          <span>Tamaño de partículas</span>
+          <output id="tamaño-valor">0.12</output>
+          <input id="tamaño" type="range" min="0.04" max="0.30" step="0.01" value="0.12" />
         </label>
 
         <label>
@@ -59,13 +65,13 @@
         <h3>Variación</h3>
 
         <label>
-          <span>Frecuencia</span>
-          <output id="frecuencia-valor">0.40</output>
-          <input id="frecuencia" type="range" min="0.05" max="1.2" step="0.05" value="0.4" />
+          <span>Frecuencia (BPM)</span>
+          <output id="frecuencia-valor">80</output>
+          <input id="frecuencia" type="range" min="60" max="140" step="1" value="80" />
         </label>
 
         <label>
-          <span>Aleatoriedad</span>
+          <span>Aleatoriedad / Relajación</span>
           <output id="aleatoriedad-valor">0.00</output>
           <input id="aleatoriedad" type="range" min="0" max="1.5" step="0.05" value="0" />
         </label>

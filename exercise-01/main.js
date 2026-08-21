@@ -7,9 +7,10 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const valoresIniciales = {
   densidad: 1800,
+  tamaño: 0.12,
   dispersión: 0.8,
   amplitud: 3.0,
-  frecuencia: 0.4,
+  frecuencia: 80,
   aleatoriedad: 0.0,
   semilla: 42,
 };
@@ -61,24 +62,27 @@ viewport.appendChild(renderer.domElement);
 
 const controlesOrbita = new OrbitControls(camara, renderer.domElement);
 controlesOrbita.enableDamping = true;
-controlesOrbita.enableRotate = false;
+controlesOrbita.enableRotate = true;
+controlesOrbita.dampingFactor = 0.08;
+controlesOrbita.minDistance = 7;
+controlesOrbita.maxDistance = 32;
 controlesOrbita.target.set(0, 0, 0);
 
 // Iluminación general.
-const luzAmbiente = new THREE.AmbientLight(0xdcecff, 2.2);
+const luzAmbiente = new THREE.AmbientLight(0xdcecff, 1.1);
 escena.add(luzAmbiente);
 
-const luzHemisferica = new THREE.HemisphereLight(0xf3efe5, 0x202229, 2.4);
+const luzHemisferica = new THREE.HemisphereLight(0xf3efe5, 0x202229, 1.8);
 escena.add(luzHemisferica);
 
 // Luz principal.
-const luzPrincipal = new THREE.DirectionalLight(0xffffff, 4.5);
+const luzPrincipal = new THREE.DirectionalLight(0xffffff, 3.2);
 luzPrincipal.position.set(10, 18, 12);
 luzPrincipal.castShadow = true;
 escena.add(luzPrincipal);
 
 // Luz secundaria para suavizar el contraste.
-const luzRelleno = new THREE.DirectionalLight(0xc8d8ff, 0.8);
+const luzRelleno = new THREE.DirectionalLight(0xc8d8ff, 1.4);
 luzRelleno.position.set(-8, 6, -6);
 escena.add(luzRelleno);
 
@@ -121,6 +125,7 @@ const paradasCromaticas = [
   { factor: 1.00, color: new THREE.Color("#0066FF") },
 ];
 const colorTemporal = new THREE.Color();
+const colorSomatico = new THREE.Color("#660000");
 let anillo = null;
 const ruidoAutomatico = [];
 
@@ -226,31 +231,26 @@ function mapearColorSomatico(factor, destino) {
 }
 
 function crearAnillo() {
-  const geometria = new THREE.BufferGeometry();
   const count = Math.max(400, Math.round(parametros.densidad));
   ruidoAutomatico.length = 0;
   for (let indice = 0; indice < count; indice++) {
     ruidoAutomatico.push(aleatoriedadConSemilla(indice, 0, parametros.semilla));
   }
-  const posiciones = new Float32Array(count * 3);
-  const colores = new Float32Array(count * 3);
-
-  geometria.setAttribute("position", new THREE.BufferAttribute(posiciones, 3));
-  geometria.setAttribute("color", new THREE.BufferAttribute(colores, 3));
-
-  const material = new THREE.PointsMaterial({
-    size: 0.12,
-    vertexColors: true,
+  const geometria = new THREE.SphereGeometry(1, 12, 8);
+  const material = new THREE.MeshStandardMaterial({
+    color: "#660000",
+    roughness: 0.42,
+    metalness: 0.05,
     transparent: true,
     opacity: 1,
-    depthWrite: false,
-    blending: THREE.NormalBlending,
   });
 
-  const puntos = new THREE.Points(geometria, material);
-  puntos.userData = { count };
-  grupoCampo.add(puntos);
-  anillo = puntos;
+  const esferas = new THREE.InstancedMesh(geometria, material, count);
+  esferas.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  esferas.userData = { count };
+  esferas.castShadow = true;
+  grupoCampo.add(esferas);
+  anillo = esferas;
 }
 
 function limpiarCampo() {
@@ -270,20 +270,18 @@ function actualizarAnillo(tiempo) {
   const puntos = anillo;
   if (!puntos) return;
 
-  const atributoPosicion = puntos.geometry.attributes.position;
-  const atributoColor = puntos.geometry.attributes.color;
-  const posiciones = atributoPosicion.array;
-  const colores = atributoColor.array;
-  const cantidad = atributoPosicion.count;
+  const cantidad = puntos.count;
+  const matrizParticula = new THREE.Object3D();
 
-  const frecuenciaRitmo = caracteristicaFrecuenciaCardiaca
-    ? frecuenciaLatido
-    : frecuenciaLatido * parametros.frecuencia;
+  const frecuenciaRitmo = frecuenciaLatido;
   const radioBase = 4.6;
   const faseCardiaca = tiempo * frecuenciaRitmo * Math.PI * 2;
   const pulsoObjetivo = Math.sin(faseCardiaca) * parametros.amplitud * 0.012;
   pulsoRadial = THREE.MathUtils.lerp(pulsoRadial, pulsoObjetivo, 0.08);
   const grosorPerfil = THREE.MathUtils.lerp(0.012, parametros.dispersión, factorSomatico);
+  mapearColorSomatico(factorSomatico, colorTemporal);
+  colorSomatico.lerp(colorTemporal, 0.08);
+  puntos.material.color.copy(colorSomatico);
 
   for (let indice = 0; indice < cantidad; indice++) {
     const progreso = indice / cantidad;
@@ -299,19 +297,13 @@ function actualizarAnillo(tiempo) {
     const y = Math.sin(angulo) * radio;
     const z = 0;
 
-    const index = indice * 3;
-    posiciones[index] = x;
-    posiciones[index + 1] = y;
-    posiciones[index + 2] = z;
-
-    mapearColorSomatico(factorSomatico, colorTemporal);
-    colores[index] = colorTemporal.r;
-    colores[index + 1] = colorTemporal.g;
-    colores[index + 2] = colorTemporal.b;
+    matrizParticula.position.set(x, y, z);
+    matrizParticula.scale.setScalar(parametros.tamaño);
+    matrizParticula.updateMatrix();
+    puntos.setMatrixAt(indice, matrizParticula.matrix);
   }
 
-  atributoPosicion.needsUpdate = true;
-  atributoColor.needsUpdate = true;
+  puntos.instanceMatrix.needsUpdate = true;
 }
 
 function actualizarCampoAnimado() {
@@ -327,13 +319,19 @@ function actualizarCampoAnimado() {
 }
 
 function actualizarSimulacionAutomatica(tiempo) {
-  const factorSimulado = (Math.sin(tiempo * 0.03) + 1) / 2;
-  const intervaloSimulado = THREE.MathUtils.lerp(400, 1200, factorSimulado);
+  const relajacion = THREE.MathUtils.clamp(parametros.aleatoriedad / 1.5, 0, 1);
+  const bpmPorEstado = THREE.MathUtils.lerp(140, 60, relajacion);
+  const bpmSimuladoObjetivo = THREE.MathUtils.clamp(
+    bpmPorEstado * (parametros.frecuencia / 80),
+    60,
+    140
+  );
+  const intervaloSimulado = 60000 / bpmSimuladoObjetivo;
   inputA = Math.round(THREE.MathUtils.lerp(inputA, intervaloSimulado, 0.015));
   inputB = Math.round(THREE.MathUtils.lerp(inputB, intervaloSimulado, 0.015));
   mediaRRVisual = THREE.MathUtils.lerp(mediaRRVisual, intervaloSimulado, 0.08);
-  bpm = Math.round(60000 / mediaRRVisual);
-  factorSomaticoObjetivo = factorSimulado;
+  bpm = Math.round(THREE.MathUtils.clamp(60000 / mediaRRVisual, 60, 140));
+  factorSomaticoObjetivo = relajacion;
   deltaRR = Math.abs(inputA - inputB);
   rmssd = deltaRR;
 }
@@ -363,6 +361,7 @@ function aleatoriedadConSemilla(x, z, semilla) {
 
 const controles = {
   densidad: document.querySelector("#densidad"),
+  tamaño: document.querySelector("#tamaño"),
   dispersión: document.querySelector("#dispersión"),
   amplitud: document.querySelector("#amplitud"),
   frecuencia: document.querySelector("#frecuencia"),
@@ -372,6 +371,7 @@ const controles = {
 
 const valoresVisibles = {
   densidad: document.querySelector("#densidad-valor"),
+  tamaño: document.querySelector("#tamaño-valor"),
   dispersión: document.querySelector("#dispersión-valor"),
   amplitud: document.querySelector("#amplitud-valor"),
   frecuencia: document.querySelector("#frecuencia-valor"),
@@ -432,6 +432,10 @@ let estadoConexion = "Desconectado · control manual";
 
 function actualizarEstadoBluetooth(estado) {
   estadoConexion = estado;
+  const sensorConectado = Boolean(caracteristicaFrecuenciaCardiaca);
+  [controles.frecuencia, controles.aleatoriedad, controles.semilla].forEach((control) => {
+    control.disabled = sensorConectado;
+  });
   actualizarLecturaBiometrica();
 }
 
@@ -537,7 +541,7 @@ controlInputB.addEventListener("input", (event) => {
 actualizarLecturaBiometrica();
 
 function actualizarParametro(nombre, valor) {
-  const parametrosEnteros = ["densidad", "semilla"];
+  const parametrosEnteros = ["densidad", "frecuencia", "semilla"];
 
   parametros[nombre] = parametrosEnteros.includes(nombre)
     ? Number.parseInt(valor, 10)
@@ -568,7 +572,7 @@ document.querySelector("#regenerar").addEventListener("click", () => {
 document.querySelector("#restablecer").addEventListener("click", () => {
   Object.assign(parametros, valoresIniciales);
 
-  const parametrosEnteros = ["densidad", "semilla"];
+  const parametrosEnteros = ["densidad", "frecuencia", "semilla"];
 
   Object.entries(controles).forEach(([nombre, control]) => {
     control.value = parametros[nombre];
