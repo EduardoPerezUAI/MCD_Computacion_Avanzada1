@@ -18,6 +18,7 @@
 
 
 ![tags](../assets/images/tags.png)
+
 ## Links
 
 
@@ -36,7 +37,7 @@ Puede esta capacidad de sensabilidad y responsibilidad contruibuir a un diseño 
 
 
 
-![Estado del arte en RTD](../assets/images/ProyectosRTD.jpg)
+![Estado del arte en RTD](../assets/images/ProyectosRTD.png)
 ![Estado del arte en RTD](../assets/images/nuropod.webp)
 - [Nuropod](https://nuropod.com/es)
 
