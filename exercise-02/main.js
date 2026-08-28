@@ -322,7 +322,6 @@ function createSwimSketch(p, rawSessions) {
 
   function drawBackgroundTimeline(sessionStates) {
     const isMobile = p.width < 640;
-    const leftX = isMobile ? 55 : Math.max(75, p.width * 0.075);
     const leftX = isMobile ? 45 : Math.max(52, p.width * 0.04);
     const rightX = isMobile ? p.width - 25 : p.width - Math.max(100, p.width * 0.23);
     const topY = Math.max(80, p.height * 0.12);
@@ -373,8 +372,6 @@ function createSwimSketch(p, rawSessions) {
       const hrVal = session.huawei_extended.avg_heart_rate;
       const calVal = session.calories;
 
-      // Telemetría completa: Distancia, Ritmo, SWOLF, Frec. Cardíaca y Calorías
-      const lineStats = `${session.distance_meters}m · ${paceStr}/100m · ${swolfVal} SWOLF · ${hrVal} PPM · ${calVal} kcal`;
       // Telemetría dividida en 2 bloques para compactar el ancho y permitir inicio más a la izquierda
       const infoLine1 = `${session.distance_meters}m · ${paceStr}/100m`;
       const infoLine2 = `${swolfVal} SWOLF · ${hrVal} PPM · ${calVal} kcal`;
@@ -393,15 +390,10 @@ function createSwimSketch(p, rawSessions) {
       p.textAlign(p.RIGHT, p.CENTER);
       p.textSize(10.5);
       p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 255 : 190);
-      p.text(`${mDayStr}`, leftX - 10, y);
       p.text(`${mDayStr}`, leftX - 8, y);
 
-      // Bloque de información (Distancia, ritmo, SWOLF, PPM, kcal) a la izquierda, DEBAJO de la línea
       // Bloque de información en dos líneas debajo de la pista
       p.textAlign(p.LEFT, p.TOP);
-      p.textSize(8.2);
-      p.fill(136, 255, 245, state.isActive ? 220 : 130);
-      p.text(lineStats, leftX, y + 6);
 
       // Línea 1: Distancia y ritmo
       p.textSize(8.5);
