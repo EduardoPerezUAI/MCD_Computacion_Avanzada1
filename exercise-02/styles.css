@@ -12,4 +12,8 @@ h1 { margin: 7px 0 18px; color: rgba(230, 255, 253, .95); font-size: clamp(1.55r
 .metrics b { color: #4ef1cf; font-size: 1.05em; font-weight: 500; }
 .detail { margin: 16px 0 0; color: rgba(195, 240, 237, .55); font-size: .72rem; letter-spacing: .04em; }
 .instruction { position: absolute; right: clamp(22px, 4vw, 58px); bottom: clamp(22px, 4vw, 58px); text-align: right; }
+.speed-control { position: absolute; top: clamp(22px, 4vw, 58px); right: clamp(22px, 4vw, 58px); width: min(180px, 42vw); pointer-events: auto; }
+.speed-control label { display: flex; justify-content: space-between; color: rgba(136, 255, 245, .62); font-size: .65rem; letter-spacing: .1em; }
+.speed-control output { color: #4ef1cf; }
+.speed-control input { width: 100%; margin-top: 9px; accent-color: #4ef1cf; cursor: pointer; }
 @media (max-width: 600px) { .instruction { position: static; margin-top: 20px; text-align: left; } }

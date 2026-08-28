@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Corrientes Somáticas · Natación</title>
+    <title>Progreso Natación</title>
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
   </head>
@@ -11,7 +11,7 @@
     <div id="canvas-container" aria-label="Visualización generativa de sesiones de natación"></div>
     <aside class="overlay" aria-live="polite">
       <p class="kicker">STRAVA × HUAWEI HEALTH / CUERPO EN AGUA</p>
-      <h1>Corrientes somáticas</h1>
+      <h1>Progreso Natación</h1>
       <div class="metrics">
         <span><b id="session-id">ACT_----</b> SESIÓN</span>
         <span><b id="heart-rate">---</b> PPM</span>
@@ -19,6 +19,10 @@
         <span><b id="active-lap">-- × --</b> VUELTAS</span>
       </div>
       <p id="session-detail" class="detail">Cargando memoria corporal…</p>
+      <div class="speed-control">
+        <label for="playback-speed">VELOCIDAD <output id="speed-value">1.0×</output></label>
+        <input id="playback-speed" type="range" min="0.35" max="3" value="1" step="0.05" />
+      </div>
       <p class="instruction">← → / CLICK &nbsp; RECORRER SECUENCIA</p>
     </aside>
     <script src="./main.js"></script>

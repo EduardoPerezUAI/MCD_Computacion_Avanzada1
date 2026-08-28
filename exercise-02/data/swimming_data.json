@@ -1,67 +1,47 @@
 [
   {
-    "strava_id": "act_1001",
+    "id": "swim_20260820_1",
     "date": "2026-08-20T11:07:00",
-    "source": "Strava + Huawei Health",
     "distance_meters": 1000,
     "duration_seconds": 1275,
-    "calories": 241,
-    "huawei_extended": {
-      "avg_swolf": 44,
-      "avg_strokes_per_min": 24,
-      "total_strokes": 508,
-      "total_laps": 40,
-      "pool_length_meters": 25,
-      "avg_heart_rate": 143,
-      "laps_sample": [
-        { "lap": 1, "time_sec": 28, "pace_100m": 112, "strokes": 8, "swolf": 36 },
-        { "lap": 2, "time_sec": 27, "pace_100m": 108, "strokes": 11, "swolf": 38 },
-        { "lap": 3, "time_sec": 29, "pace_100m": 116, "strokes": 13, "swolf": 42 },
-        { "lap": 4, "time_sec": 28, "pace_100m": 112, "strokes": 12, "swolf": 40 },
-        { "lap": 5, "time_sec": 31, "pace_100m": 124, "strokes": 13, "swolf": 44 }
-      ]
-    }
+    "active_calories": 211,
+    "total_calories": 241,
+    "total_strokes": 508,
+    "total_laps": 40,
+    "avg_swolf": 44,
+    "avg_pace_100m": 127,
+    "avg_heart_rate": 143,
+    "main_style": "Estilo libre",
+    "pool_length_meters": 25
   },
   {
-    "strava_id": "act_1002",
+    "id": "swim_20260820_2",
     "date": "2026-08-20T11:32:00",
-    "source": "Strava + Huawei Health",
     "distance_meters": 1000,
     "duration_seconds": 1304,
-    "calories": 253,
-    "huawei_extended": {
-      "avg_swolf": 45,
-      "avg_strokes_per_min": 25,
-      "total_strokes": 541,
-      "total_laps": 40,
-      "pool_length_meters": 25,
-      "avg_heart_rate": 143,
-      "laps_sample": [
-        { "lap": 1, "time_sec": 29, "pace_100m": 116, "strokes": 11, "swolf": 40 },
-        { "lap": 2, "time_sec": 31, "pace_100m": 124, "strokes": 13, "swolf": 44 },
-        { "lap": 3, "time_sec": 32, "pace_100m": 128, "strokes": 14, "swolf": 46 }
-      ]
-    }
+    "active_calories": 222,
+    "total_calories": 253,
+    "total_strokes": 541,
+    "total_laps": 40,
+    "avg_swolf": 45,
+    "avg_pace_100m": 130,
+    "avg_heart_rate": 143,
+    "main_style": "Estilo libre",
+    "pool_length_meters": 25
   },
   {
-    "strava_id": "act_1003",
+    "id": "swim_20260827_1",
     "date": "2026-08-27T10:00:00",
-    "source": "Strava + Huawei Health",
     "distance_meters": 2000,
     "duration_seconds": 2700,
-    "calories": 540,
-    "huawei_extended": {
-      "avg_swolf": 46,
-      "avg_strokes_per_min": 25,
-      "total_strokes": 1020,
-      "total_laps": 80,
-      "pool_length_meters": 25,
-      "avg_heart_rate": 145,
-      "laps_sample": [
-        { "lap": 1, "style": "Pecho", "time_sec": 255, "pace_100m": 1020, "strokes": 25, "swolf": 280 },
-        { "lap": 2, "style": "Libre", "time_sec": 33, "pace_100m": 132, "strokes": 9, "swolf": 42 },
-        { "lap": 3, "style": "Libre", "time_sec": 35, "pace_100m": 140, "strokes": 8, "swolf": 43 }
-      ]
-    }
+    "active_calories": 480,
+    "total_calories": 540,
+    "total_strokes": 1020,
+    "total_laps": 80,
+    "avg_swolf": 46,
+    "avg_pace_100m": 132,
+    "avg_heart_rate": 145,
+    "main_style": "Estilo libre / Pecho",
+    "pool_length_meters": 25
   }
 ]
