@@ -19,11 +19,32 @@
         <span><b id="active-lap">-- × --</b> VUELTAS</span>
       </div>
       <p id="session-detail" class="detail">Cargando memoria corporal…</p>
-      <div class="speed-control">
-        <label for="playback-speed">VELOCIDAD <output id="speed-value">1.0×</output></label>
-        <input id="playback-speed" type="range" min="0.35" max="3" value="1" step="0.05" />
+      <div class="control-stack">
+        <label for="playback-speed">VELOCIDAD <output id="speed-value">1.00×</output></label>
+        <input id="playback-speed" type="range" min="0.25" max="3" value="1" step="0.05" />
+
+        <label for="event-spacing">ESPACIADO <output id="spacing-value">1.00 (Secuencial)</output></label>
+        <input id="event-spacing" type="range" min="0" max="1" value="1" step="0.01" />
+
+        <label for="time-scrubber">TIEMPO <output id="time-value">00:00 / 00:00</output></label>
+        <input id="time-scrubber" type="range" min="0" max="1000" value="0" step="1" />
+
+        <div class="button-row">
+          <button id="btn-play" type="button" class="ctrl-btn">PAUSAR</button>
+          <button id="btn-reset" type="button" class="ctrl-btn">REINICIAR</button>
+        </div>
+
+        <div class="speed-legend">
+          <span class="legend-title">RITMO / VELOCIDAD</span>
+          <div class="legend-gradient"></div>
+          <div class="legend-labels">
+            <span>MORADO<br><em>Lento</em></span>
+            <span>AZUL<br><em>Medio</em></span>
+            <span>AMARILLO<br><em>Rápido</em></span>
+          </div>
+        </div>
       </div>
-      <p class="instruction">← → / CLICK &nbsp; RECORRER SECUENCIA</p>
+      <p class="instruction">ESPACIO: PLAY/PAUSA &nbsp;·&nbsp; SLIDER TIEMPO: AVANZAR/RETROCEDER</p>
     </aside>
     <script src="./main.js"></script>
   </body>
