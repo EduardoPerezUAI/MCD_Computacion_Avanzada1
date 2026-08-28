@@ -3,14 +3,6 @@
 // Visualización simultánea: Pistas lineales (Fondo) + Anillos orgánicos (Frente)
 // ====================================================================
 
-const metricNodes = {
-  id: document.querySelector("#session-id"),
-  heartRate: document.querySelector("#heart-rate"),
-  swolf: document.querySelector("#swolf"),
-  lap: document.querySelector("#active-lap"),
-  detail: document.querySelector("#session-detail"),
-};
-
 const speedInput = document.querySelector("#playback-speed");
 const speedValue = document.querySelector("#speed-value");
 const spacingInput = document.querySelector("#event-spacing");
@@ -215,7 +207,6 @@ loadSessions()
   })
   .catch((error) => {
     console.error("No se pudieron cargar las sesiones:", error);
-    if (metricNodes.detail) metricNodes.detail.textContent = "No fue posible cargar los datos.";
   });
 
 // --------------------------------------------------------------------
@@ -325,31 +316,15 @@ function createSwimSketch(p, rawSessions) {
     return (p.min(p.width, p.height) * 0.40) / mostLaps;
   }
 
-  let lastReportedSessionIndex = -1;
-
-  function updateOverlay(session) {
-    if (!session) return;
-    const body = session.huawei_extended;
-    if (metricNodes.id) metricNodes.id.textContent = (session.strava_id ?? session.id).toUpperCase();
-    if (metricNodes.heartRate) metricNodes.heartRate.textContent = body.avg_heart_rate;
-    if (metricNodes.swolf) metricNodes.swolf.textContent = body.avg_swolf;
-    if (metricNodes.lap) metricNodes.lap.textContent = `${body.total_laps} × ${body.pool_length_meters}m`;
-    const detailQuality = session.huawei_estimated ? " · SWOLF/ppm de referencia" : "";
-    if (metricNodes.detail) {
-      metricNodes.detail.textContent = `${formatMonthDay(session.date)} (${dateLabel(session.date)}) · ${session.distance_meters} m · ${session.calories} kcal · ${formatPace(paceFor(session))} /100m${detailQuality}`;
-    }
-  }
-
   // ------------------------------------------------------------------
   // RENDERIZADO: VISUALIZACIÓN DE FONDO (LÍNEAS DE IZQ A DER)
   // ------------------------------------------------------------------
 
   function drawBackgroundTimeline(sessionStates) {
     const isMobile = p.width < 640;
-    const leftX = isMobile ? 65 : Math.max(90, p.width * 0.08);
+    const leftX = isMobile ? 55 : Math.max(75, p.width * 0.075);
+    const leftX = isMobile ? 45 : Math.max(52, p.width * 0.04);
     const rightX = isMobile ? p.width - 25 : p.width - Math.max(100, p.width * 0.23);
-    const leftX = isMobile ? 60 : Math.max(80, p.width * 0.075);
-    const rightX = isMobile ? p.width - 25 : p.width - Math.max(120, p.width * 0.24);
     const topY = Math.max(80, p.height * 0.12);
     const bottomY = p.height - (isMobile ? 180 : Math.max(140, p.height * 0.22));
 
@@ -398,8 +373,11 @@ function createSwimSketch(p, rawSessions) {
       const hrVal = session.huawei_extended.avg_heart_rate;
       const calVal = session.calories;
 
-      // Telemetría completa requerida: Distancia, Ritmo, SWOLF, Frec. Cardíaca y Calorías
+      // Telemetría completa: Distancia, Ritmo, SWOLF, Frec. Cardíaca y Calorías
       const lineStats = `${session.distance_meters}m · ${paceStr}/100m · ${swolfVal} SWOLF · ${hrVal} PPM · ${calVal} kcal`;
+      // Telemetría dividida en 2 bloques para compactar el ancho y permitir inicio más a la izquierda
+      const infoLine1 = `${session.distance_meters}m · ${paceStr}/100m`;
+      const infoLine2 = `${swolfVal} SWOLF · ${hrVal} PPM · ${calVal} kcal`;
 
       // Guía base de la pista (hasta la meta del entrenamiento)
       p.stroke(255, 255, 255, 20);
@@ -410,23 +388,30 @@ function createSwimSketch(p, rawSessions) {
       p.stroke(p.red(speedCol), p.green(speedCol), p.blue(speedCol), 80);
       p.line(targetX, y - 5, targetX, y + 5);
 
-      // Etiquetas informativas de la pista (Nomenclatura Mes/Día, Distancia, Ritmo)
-      // Nomenclatura Mes/Día a la izquierda de la línea
+      // Fecha Mes/Día a la izquierda de la marca de 0m
       p.noStroke();
       p.textAlign(p.RIGHT, p.CENTER);
-      p.textSize(10);
-      p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 255 : 170);
-      p.text(`${mDayStr}`, leftX - 10, y - 2);
+      p.textSize(10.5);
+      p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 255 : 190);
       p.text(`${mDayStr}`, leftX - 10, y);
+      p.text(`${mDayStr}`, leftX - 8, y);
 
-      p.textSize(8);
-      p.fill(136, 255, 245, state.isActive ? 180 : 80);
-      p.text(`${session.distance_meters}m · ${paceStr}/100m`, leftX - 10, y + 9);
-      // Información completa (distancia, ritmo, SWOLF, freq. cardíaca y calorías) a la derecha de la línea
-      p.textAlign(p.LEFT, p.CENTER);
+      // Bloque de información (Distancia, ritmo, SWOLF, PPM, kcal) a la izquierda, DEBAJO de la línea
+      // Bloque de información en dos líneas debajo de la pista
+      p.textAlign(p.LEFT, p.TOP);
+      p.textSize(8.2);
+      p.fill(136, 255, 245, state.isActive ? 220 : 130);
+      p.text(lineStats, leftX, y + 6);
+
+      // Línea 1: Distancia y ritmo
       p.textSize(8.5);
-      p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 245 : 140);
-      p.text(lineStats, targetX + 8, y);
+      p.fill(136, 255, 245, state.isActive ? 235 : 150);
+      p.text(infoLine1, leftX, y + 5);
+
+      // Línea 2: SWOLF, PPM y calorías
+      p.textSize(7.8);
+      p.fill(136, 255, 245, state.isActive ? 195 : 110);
+      p.text(infoLine2, leftX, y + 17);
 
       // Dibujar la línea creada desde la izquierda (0m) hasta la posición actual del punto
       if (headX > leftX + 0.5) {
@@ -482,8 +467,6 @@ function createSwimSketch(p, rawSessions) {
   }
 
   // ------------------------------------------------------------------
-  // RENDERIZADO: ANILLOS ORGÁNICOS EN EL FRENTE (CENTRO)
-  // Un evento, un color idéntico al de las líneas
   // RENDERIZADO: ANILLOS CONCÉNTRICOS COMPLETAMENTE CIRCULARES (FRENTE)
   // Geometría estrictamente circular (1:1), color unificado por evento
   // ------------------------------------------------------------------
@@ -491,8 +474,6 @@ function createSwimSketch(p, rawSessions) {
   function organicRing(session, seed, radius, alpha, width = 1) {
     if (radius <= 0) return;
     const swolf = session.huawei_extended.avg_swolf;
-    const irregularity = p.map(swolf, 35, 55, 4, 21, true);
-    const points = Math.max(80, Math.floor((p.TWO_PI * radius) / 6));
     const irregularity = p.map(swolf, 35, 55, 1.5, 6, true);
     const points = Math.max(90, Math.floor((p.TWO_PI * radius) / 5));
     const cx = p.width / 2;
@@ -505,10 +486,6 @@ function createSwimSketch(p, rawSessions) {
     p.beginShape();
     for (let pt = 0; pt <= points; pt += 1) {
       const angle = p.map(pt, 0, points, 0, p.TWO_PI);
-      const texture = p.noise(seed + p.cos(angle) * 0.8, seed + p.sin(angle) * 0.8) - 0.5;
-      const ripple = p.sin(angle * 5 + seed) * irregularity * 0.18;
-      const ringRadius = radius + texture * irregularity + ripple;
-      p.vertex(cx + p.cos(angle) * ringRadius, cy + p.sin(angle) * ringRadius * 0.82);
       const ripple = p.sin(angle * 6 + seed) * irregularity * 0.12;
       const ringRadius = radius + ripple;
       // Geometría completamente circular (sin achatamiento en Y)
@@ -526,9 +503,6 @@ function createSwimSketch(p, rawSessions) {
 
     // Posicionamiento estrictamente circular (sin factor 0.82)
     const ringX = cx + p.cos(angle) * radius;
-    const ringY = cy + p.sin(angle) * (radius * 0.82);
-    const labelX = cx + p.cos(angle) * (radius + 24);
-    const labelY = cy + p.sin(angle) * ((radius + 24) * 0.82);
     const ringY = cy + p.sin(angle) * radius;
     const labelX = cx + p.cos(angle) * (radius + 22);
     const labelY = cy + p.sin(angle) * (radius + 22);
@@ -593,9 +567,6 @@ function createSwimSketch(p, rawSessions) {
     p.createCanvas(p.windowWidth, p.windowHeight);
     p.pixelDensity(Math.min(p.pixelDensity(), 2));
     p.background(0);
-    if (sessions.length > 0) {
-      updateOverlay(sessions[0]);
-    }
   };
 
   p.draw = () => {
@@ -616,10 +587,6 @@ function createSwimSketch(p, rawSessions) {
     // Asegurar tiempo dentro de rango
     const t = p.constrain(globalTime, 0, totalDuration);
 
-    // Calcular estado de cada sesión en el instante t
-    let activeSessionForOverlay = null;
-    let fallbackSessionForOverlay = sessions[0];
-
     const sessionStates = sessions.map((session, i) => {
       const tStart = starts[i];
       const duration = sessionDurations[i];
@@ -636,12 +603,10 @@ function createSwimSketch(p, rawSessions) {
       } else if (t >= tEnd) {
         isCompleted = true;
         currentMeters = session.distance_meters;
-        fallbackSessionForOverlay = session;
       } else {
         isActive = true;
         const progress = p.constrain((t - tStart) / duration, 0, 1);
         currentMeters = progress * session.distance_meters;
-        activeSessionForOverlay = session;
       }
 
       return {
@@ -659,15 +624,7 @@ function createSwimSketch(p, rawSessions) {
     // 2. DIBUJAR VISUALIZACIÓN DE FRENTE (Anillos orgánicos circulares con color unificado)
     drawForegroundWaves(sessionStates);
 
-    // 3. SINCRONIZAR OVERLAY DE DATOS
-    const activeSession = activeSessionForOverlay || fallbackSessionForOverlay;
-    const activeIdx = sessions.indexOf(activeSession);
-    if (activeIdx !== lastReportedSessionIndex) {
-      lastReportedSessionIndex = activeIdx;
-      updateOverlay(activeSession);
-    }
-
-    // 4. SINCRONIZAR SLIDER Y DISPLAY DE TIEMPO
+    // 3. SINCRONIZAR SLIDER Y DISPLAY DE TIEMPO
     if (timeInput && !isScrubbing) {
       const fraction = totalDuration > 0 ? t / totalDuration : 0;
       timeInput.value = String(Math.round(fraction * 1000));
