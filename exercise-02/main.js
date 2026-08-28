@@ -76,8 +76,25 @@ btnReset?.addEventListener("click", () => {
 });
 
 // --------------------------------------------------------------------
-// OBTENCIÓN Y NORMALIZACIÓN DE DATOS (STRAVA + HUAWEI HEALTH)
+// FILTRO DE REGISTROS Y OBTENCIÓN DE DATOS
 // --------------------------------------------------------------------
+
+// Exclusión solicitada de registros erróneos o atípicos: 7/16 y 8/20
+function isExcludedDate(dateStr) {
+  const d = new Date(dateStr);
+  const m = d.getMonth() + 1; // 1 - 12
+  const day = d.getDate();
+  if (m === 7 && day === 16) return true; // Elimina 7/16
+  if (m === 8 && day === 20) return true; // Elimina 8/20
+  return false;
+}
+
+function formatMonthDay(dateStr) {
+  const d = new Date(dateStr);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}/${dd}`;
+}
 
 const STRAVA_TOKEN = "6befd79262e1aee2ad2f3084c06425f4ecb6579f";
 
@@ -171,11 +188,16 @@ function mergeStravaWithHuawei(stravaActivities, huaweiSessions) {
 async function loadSessions() {
   const localResponse = await fetch("./data/swimming_data.json");
   if (!localResponse.ok) throw new Error(`Dataset local respondió HTTP ${localResponse.status}`);
-  const localSessions = (await localResponse.json()).map(normalizeSession);
+  let localSessions = (await localResponse.json())
+    .map(normalizeSession)
+    .filter((s) => !isExcludedDate(s.date));
+
   if (!Array.isArray(localSessions) || !localSessions.length) throw new Error("No hay sesiones locales.");
 
   try {
-    return mergeStravaWithHuawei(await fetchStravaActivities(), localSessions);
+    const strava = await fetchStravaActivities();
+    const merged = mergeStravaWithHuawei(strava, localSessions).filter((s) => !isExcludedDate(s.date));
+    return merged;
   } catch (error) {
     console.warn("Strava no disponible; se usará el historial Huawei local.", error);
     return localSessions;
@@ -212,25 +234,25 @@ function createSwimSketch(p, rawSessions) {
   const speedFor = (s) => s.distance_meters / s.duration_seconds; // m/s
   const formatPace = (seconds) => `${Math.floor(Math.round(seconds) / 60)}:${String(Math.round(seconds) % 60).padStart(2, "0")}`;
   const dateLabel = (d) => new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(d));
-  const shortDateLabel = (d) => new Intl.DateTimeFormat("es-CL", { day: "2-digit", month: "short" }).format(new Date(d)).toUpperCase();
   const formatTimeClock = (sec) => {
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   };
 
-  // Calcular rango de velocidades para la gradación cromática
+  // ------------------------------------------------------------------
+  // CALIBRACIÓN Y REESCALADO DE GRADACIÓN CROMÁTICA DE VELOCIDAD
+  // Un evento, un color idéntico para fondo (lineal) y frente (circular)
+  // ------------------------------------------------------------------
+
   const allSpeeds = sessions.map(speedFor);
   const minSpeed = Math.min(...allSpeeds);
   const maxSpeed = Math.max(...allSpeeds);
 
-  // Normalización de velocidad para mapear a [0, 1]
+  // Normalización suave en rango [0, 1]
   function getNormalizedSpeed(session) {
     const spd = speedFor(session);
-    if (maxSpeed - minSpeed < 0.001) {
-      // Si todas las velocidades son idénticas, usar ritmo de referencia humano (160s/100m a 95s/100m)
-      return p.constrain(p.map(spd, 0.62, 1.05, 0, 1), 0, 1);
-    }
+    if (maxSpeed - minSpeed < 0.001) return 0.5;
     return p.constrain((spd - minSpeed) / (maxSpeed - minSpeed), 0, 1);
   }
 
@@ -250,20 +272,16 @@ function createSwimSketch(p, rawSessions) {
     }
   }
 
-  // SWOLF color para los anillos orgánicos frontales
-  function swolfColor(swolf) {
-    const scores = sessions.map((s) => s.huawei_extended.avg_swolf);
-    const low = Math.min(...scores);
-    const high = Math.max(...scores);
-    const fraction = low === high ? 0.5 : p.constrain((swolf - low) / (high - low), 0, 1);
-    return p.lerpColor(p.color("#10b981"), p.color("#ef4444"), fraction);
+  // Obtener el color consistente para un evento dado
+  function sessionColor(session, alpha = 255) {
+    const norm = getNormalizedSpeed(session);
+    return getSpeedColor(norm, alpha);
   }
 
   // Duración base de animación por sesión en segundos
   function getSessionDuration(session) {
-    // Escala donde 1000m toma ~8.5s a ritmo medio
     const pace = paceFor(session);
-    return Math.max(4, (session.distance_meters / 100) * 0.85 * (pace / 130));
+    return Math.max(4, (session.distance_meters / 100) * 0.85 * (pace / 150));
   }
 
   const sessionDurations = sessions.map(getSessionDuration);
@@ -292,13 +310,19 @@ function createSwimSketch(p, rawSessions) {
     getTotalDuration: () => getSchedule().totalDuration,
   };
 
-  // Semillas aleatorias y ángulos únicos para cada sesión
+  // Semillas aleatorias fijas para cada sesión
   const sessionSeeds = sessions.map(() => p.random(10000));
-  const sessionAngles = sessions.map((_, i) => i * 1.74 - 0.72);
+
+  // Distribución de ángulos en el cuadrante SUPERIOR DERECHO (entre -78° y -12°)
+  // para que todas las nomenclaturas mes/dia sean visibles sin solaparse
+  const sessionAngles = sessions.map((_, i) => {
+    if (sessions.length <= 1) return p.radians(-45);
+    return p.map(i, 0, sessions.length - 1, p.radians(-78), p.radians(-12));
+  });
 
   function lapSpacing() {
     const mostLaps = Math.max(...sessions.map((s) => s.huawei_extended.total_laps));
-    return (p.min(p.width, p.height) * 0.42) / mostLaps;
+    return (p.min(p.width, p.height) * 0.40) / mostLaps;
   }
 
   let lastReportedSessionIndex = -1;
@@ -312,7 +336,7 @@ function createSwimSketch(p, rawSessions) {
     if (metricNodes.lap) metricNodes.lap.textContent = `${body.total_laps} × ${body.pool_length_meters}m`;
     const detailQuality = session.huawei_estimated ? " · SWOLF/ppm de referencia" : "";
     if (metricNodes.detail) {
-      metricNodes.detail.textContent = `${dateLabel(session.date)} · ${session.distance_meters} m · ${session.calories} kcal · ${formatPace(paceFor(session))} /100m${detailQuality}`;
+      metricNodes.detail.textContent = `${formatMonthDay(session.date)} (${dateLabel(session.date)}) · ${session.distance_meters} m · ${session.calories} kcal · ${formatPace(paceFor(session))} /100m${detailQuality}`;
     }
   }
 
@@ -324,6 +348,8 @@ function createSwimSketch(p, rawSessions) {
     const isMobile = p.width < 640;
     const leftX = isMobile ? 65 : Math.max(90, p.width * 0.08);
     const rightX = isMobile ? p.width - 25 : p.width - Math.max(100, p.width * 0.23);
+    const leftX = isMobile ? 60 : Math.max(80, p.width * 0.075);
+    const rightX = isMobile ? p.width - 25 : p.width - Math.max(120, p.width * 0.24);
     const topY = Math.max(80, p.height * 0.12);
     const bottomY = p.height - (isMobile ? 180 : Math.max(140, p.height * 0.22));
 
@@ -365,9 +391,15 @@ function createSwimSketch(p, rawSessions) {
       const targetX = p.map(session.distance_meters, 0, MAX_DISTANCE, leftX, rightX);
       const headX = p.map(state.currentMeters, 0, MAX_DISTANCE, leftX, rightX);
 
-      const normSpeed = getNormalizedSpeed(session);
-      const speedCol = getSpeedColor(normSpeed);
+      const speedCol = sessionColor(session);
       const paceStr = formatPace(paceFor(session));
+      const mDayStr = formatMonthDay(session.date);
+      const swolfVal = session.huawei_extended.avg_swolf;
+      const hrVal = session.huawei_extended.avg_heart_rate;
+      const calVal = session.calories;
+
+      // Telemetría completa requerida: Distancia, Ritmo, SWOLF, Frec. Cardíaca y Calorías
+      const lineStats = `${session.distance_meters}m · ${paceStr}/100m · ${swolfVal} SWOLF · ${hrVal} PPM · ${calVal} kcal`;
 
       // Guía base de la pista (hasta la meta del entrenamiento)
       p.stroke(255, 255, 255, 20);
@@ -378,16 +410,23 @@ function createSwimSketch(p, rawSessions) {
       p.stroke(p.red(speedCol), p.green(speedCol), p.blue(speedCol), 80);
       p.line(targetX, y - 5, targetX, y + 5);
 
-      // Etiquetas informativas de la pista (Fecha, Distancia, Ritmo)
+      // Etiquetas informativas de la pista (Nomenclatura Mes/Día, Distancia, Ritmo)
+      // Nomenclatura Mes/Día a la izquierda de la línea
       p.noStroke();
       p.textAlign(p.RIGHT, p.CENTER);
       p.textSize(10);
-      p.fill(217, 255, 255, state.isActive ? 220 : 120);
-      p.text(`${shortDateLabel(session.date)}`, leftX - 10, y - 2);
+      p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 255 : 170);
+      p.text(`${mDayStr}`, leftX - 10, y - 2);
+      p.text(`${mDayStr}`, leftX - 10, y);
 
       p.textSize(8);
       p.fill(136, 255, 245, state.isActive ? 180 : 80);
       p.text(`${session.distance_meters}m · ${paceStr}/100m`, leftX - 10, y + 9);
+      // Información completa (distancia, ritmo, SWOLF, freq. cardíaca y calorías) a la derecha de la línea
+      p.textAlign(p.LEFT, p.CENTER);
+      p.textSize(8.5);
+      p.fill(p.red(speedCol), p.green(speedCol), p.blue(speedCol), state.isActive ? 245 : 140);
+      p.text(lineStats, targetX + 8, y);
 
       // Dibujar la línea creada desde la izquierda (0m) hasta la posición actual del punto
       if (headX > leftX + 0.5) {
@@ -444,6 +483,9 @@ function createSwimSketch(p, rawSessions) {
 
   // ------------------------------------------------------------------
   // RENDERIZADO: ANILLOS ORGÁNICOS EN EL FRENTE (CENTRO)
+  // Un evento, un color idéntico al de las líneas
+  // RENDERIZADO: ANILLOS CONCÉNTRICOS COMPLETAMENTE CIRCULARES (FRENTE)
+  // Geometría estrictamente circular (1:1), color unificado por evento
   // ------------------------------------------------------------------
 
   function organicRing(session, seed, radius, alpha, width = 1) {
@@ -451,12 +493,14 @@ function createSwimSketch(p, rawSessions) {
     const swolf = session.huawei_extended.avg_swolf;
     const irregularity = p.map(swolf, 35, 55, 4, 21, true);
     const points = Math.max(80, Math.floor((p.TWO_PI * radius) / 6));
+    const irregularity = p.map(swolf, 35, 55, 1.5, 6, true);
+    const points = Math.max(90, Math.floor((p.TWO_PI * radius) / 5));
     const cx = p.width / 2;
     const cy = p.height / 2;
-    const col = swolfColor(swolf);
+    const col = sessionColor(session, alpha);
 
     p.noFill();
-    p.stroke(p.red(col), p.green(col), p.blue(col), alpha);
+    p.stroke(col);
     p.strokeWeight(width);
     p.beginShape();
     for (let pt = 0; pt <= points; pt += 1) {
@@ -465,24 +509,49 @@ function createSwimSketch(p, rawSessions) {
       const ripple = p.sin(angle * 5 + seed) * irregularity * 0.18;
       const ringRadius = radius + texture * irregularity + ripple;
       p.vertex(cx + p.cos(angle) * ringRadius, cy + p.sin(angle) * ringRadius * 0.82);
+      const ripple = p.sin(angle * 6 + seed) * irregularity * 0.12;
+      const ringRadius = radius + ripple;
+      // Geometría completamente circular (sin achatamiento en Y)
+      p.vertex(cx + p.cos(angle) * ringRadius, cy + p.sin(angle) * ringRadius);
     }
     p.endShape(p.CLOSE);
   }
 
-  function drawInscription(session, angle) {
+  // Despliegue de nomenclatura mes/dia en la parte DERECHA SUPERIOR de la figura concéntrica
+  function drawUpperRightInscription(session, angle, state) {
     const spacing = lapSpacing();
     const radius = session.huawei_extended.total_laps * spacing;
-    const x = p.width / 2 + p.cos(angle) * (radius + 20);
-    const y = p.height / 2 + p.sin(angle) * (radius * 0.82 + 20);
-    const col = swolfColor(session.huawei_extended.avg_swolf);
-    const name = session.name || `Entrenamiento ${shortDateLabel(session.date)}`;
+    const cx = p.width / 2;
+    const cy = p.height / 2;
 
+    // Posicionamiento estrictamente circular (sin factor 0.82)
+    const ringX = cx + p.cos(angle) * radius;
+    const ringY = cy + p.sin(angle) * (radius * 0.82);
+    const labelX = cx + p.cos(angle) * (radius + 24);
+    const labelY = cy + p.sin(angle) * ((radius + 24) * 0.82);
+    const ringY = cy + p.sin(angle) * radius;
+    const labelX = cx + p.cos(angle) * (radius + 22);
+    const labelY = cy + p.sin(angle) * (radius + 22);
+
+    const mDayStr = formatMonthDay(session.date);
+    const col = sessionColor(session);
+
+    // Línea conector / guía sutil hacia la etiqueta
+    p.stroke(p.red(col), p.green(col), p.blue(col), state.isActive ? 160 : 70);
+    p.strokeWeight(0.8);
+    p.line(ringX, ringY, labelX - 4, labelY);
+
+    // Punto conector en la etiqueta
     p.noStroke();
-    p.fill(p.red(col), p.green(col), p.blue(col), 160);
-    p.textSize(10);
+    p.fill(p.red(col), p.green(col), p.blue(col), state.isActive ? 255 : 180);
+    p.ellipse(labelX - 4, labelY, 3, 3);
+
+    // Texto nomenclatura mes/dia
+    p.fill(p.red(col), p.green(col), p.blue(col), state.isActive ? 255 : (state.isCompleted ? 210 : 80));
+    p.textSize(state.isActive ? 11 : 9.5);
     p.textFont("monospace");
     p.textAlign(p.LEFT, p.CENTER);
-    p.text(name.toUpperCase(), x, y);
+    p.text(mDayStr, labelX + 2, labelY);
   }
 
   function drawForegroundWaves(sessionStates) {
@@ -498,7 +567,7 @@ function createSwimSketch(p, rawSessions) {
       if (state.isCompleted) {
         // Anillo exterior completo final
         organicRing(session, seed, session.huawei_extended.total_laps * spacing, 140, 1.3);
-        drawInscription(session, angle);
+        drawUpperRightInscription(session, angle, state);
       } else if (state.isActive) {
         // Estelas de vueltas recientes
         for (let lap = Math.max(1, reachedLaps - 3); lap <= reachedLaps; lap += 1) {
@@ -508,6 +577,10 @@ function createSwimSketch(p, rawSessions) {
         if (state.currentMeters > 0) {
           organicRing(session, seed, (state.currentMeters / 25) * spacing, 160, 1.25);
         }
+        drawUpperRightInscription(session, angle, state);
+      } else {
+        // Despliegue tenue del indicador mes/dia para mantener visible la distribución completa
+        drawUpperRightInscription(session, angle, state);
       }
     }
   }
@@ -583,7 +656,7 @@ function createSwimSketch(p, rawSessions) {
     // 1. DIBUJAR VISUALIZACIÓN DE FONDO (Pistas lineales de izquierda a derecha)
     drawBackgroundTimeline(sessionStates);
 
-    // 2. DIBUJAR VISUALIZACIÓN DE FRENTE (Anillos orgánicos circulares)
+    // 2. DIBUJAR VISUALIZACIÓN DE FRENTE (Anillos orgánicos circulares con color unificado)
     drawForegroundWaves(sessionStates);
 
     // 3. SINCRONIZAR OVERLAY DE DATOS

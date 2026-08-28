@@ -6,13 +6,17 @@ body { background: #000000; color: #d9ffff; font-family: "SFMono-Regular", Conso
 #canvas-container canvas { display: block; }
 .overlay { position: fixed; z-index: 2; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: clamp(22px, 4vw, 58px); pointer-events: none; text-shadow: 0 1px 12px #000; }
 .kicker, .instruction { margin: 0; color: rgba(136, 255, 245, .62); font-size: clamp(.6rem, 1vw, .73rem); letter-spacing: .14em; line-height: 1.55; }
-h1 { margin: 7px 0 18px; color: rgba(230, 255, 253, .95); font-size: clamp(1.55rem, 4vw, 3.5rem); font-weight: 400; letter-spacing: -.075em; }
+h1 { margin: 7px 0 15px; color: rgba(13, 165, 216, 0.95); font-size: clamp(1.1rem, 3vw, 2.5rem); font-weight: 400; letter-spacing: -.075em; }
 .metrics { display: flex; flex-wrap: wrap; gap: 10px 24px; max-width: 900px; }
 .metrics span { color: rgba(205, 255, 248, .6); font-size: clamp(.67rem, 1.15vw, .85rem); letter-spacing: .08em; }
 .metrics b { color: #4ef1cf; font-size: 1.05em; font-weight: 500; }
 .detail { margin: 16px 0 0; color: rgba(195, 240, 237, .55); font-size: .72rem; letter-spacing: .04em; }
 .instruction { position: absolute; right: clamp(22px, 4vw, 58px); bottom: clamp(22px, 4vw, 58px); text-align: right; }
 .control-stack { position: absolute; top: clamp(20px, 3vw, 40px); right: clamp(20px, 3vw, 40px); width: min(240px, 80vw); display: grid; gap: 8px; pointer-events: auto; background: rgba(5, 12, 18, 0.75); border: 1px solid rgba(78, 241, 207, 0.2); backdrop-filter: blur(10px); padding: 14px 16px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5); }
+.control-stack { position: absolute; top: clamp(16px, 2.5vw, 32px); right: clamp(16px, 2.5vw, 32px); width: min(260px, 82vw); display: grid; gap: 8px; pointer-events: auto; background: rgba(5, 12, 18, 0.82); border: 1px solid rgba(78, 241, 207, 0.22); backdrop-filter: blur(12px); padding: 14px 16px; border-radius: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.55); }
+.title-block { margin: 0 0 6px; padding-bottom: 8px; border-bottom: 1px solid rgba(78, 241, 207, 0.16); }
+.title-block .kicker { margin: 0 0 4px; color: rgba(136, 255, 245, 0.65); font-size: 0.55rem; letter-spacing: 0.12em; line-height: 1.35; }
+.title-block h1 { margin: 0; color: rgba(230, 255, 253, 0.95); font-size: clamp(1.15rem, 2.2vw, 1.45rem); font-weight: 500; letter-spacing: -0.04em; line-height: 1.15; }
 .control-stack label { display: flex; justify-content: space-between; align-items: baseline; color: rgba(136, 255, 245, .75); font-size: .63rem; letter-spacing: .08em; font-weight: 500; }
 .control-stack output { color: #4ef1cf; font-weight: 600; }
 .control-stack input[type="range"] { width: 100%; margin: 0 0 6px; accent-color: #4ef1cf; cursor: pointer; height: 5px; background: rgba(78, 241, 207, 0.15); border-radius: 3px; outline: none; }
