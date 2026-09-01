@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Campo Generativo 01</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="viewport-shell">
+      <header class="project-header">
+        <div>
+          <p class="eyebrow">COMPUTACIÓN AVANZADA · MCD UAI</p>
+          <h1>HRV Biofeedback</h1>
+          <p class="subtitle">
+            Sistema de modulación del estrés agudo basado en el Modelo de Integración Neurovisceral.
+          </p>
+        </div>
+      </header>
+
+      <div id="viewport"></div>
+
+      <!-- Overlay de instrucciones de fase -->
+      <div id="phase-overlay" class="phase-overlay">
+        <div class="instruction-container">
+          <h2 id="instruction-title">Esperando conexión...</h2>
+          <p id="instruction-text"></p>
+          <div id="timer-display" class="timer-display">--:--</div>
+        </div>
+      </div>
+
+      <div class="hint">
+        Arrastra para orbitar · Rueda para acercar · Click derecho para desplazar
+      </div>
+    </section>
+
+    <!-- Panel de control de sesión HRV Biofeedback -->
+    <aside class="controls-panel">
+      <div class="panel-header">
+        <p class="eyebrow">BIOFEEDBACK HRV</p>
+        <h2>Control de Sesión</h2>
+      </div>
+
+      <!-- Botón de conexión Bluetooth -->
+      <div class="connection-section">
+        <button id="btn-conectar-main" class="btn-primary btn-connect">
+          🔵 CONECTAR COOSPO H6M
+        </button>
+        <div id="connection-status" class="connection-status">
+          Desconectado
+        </div>
+      </div>
+
+      <!-- Botones de fases -->
+      <div class="phases-section">
+        <h3>Fases de Sesión</h3>
+        
+        <button id="btn-phase1" class="btn-phase" disabled>
+          <span class="phase-number">1</span>
+          <span class="phase-text">Evaluación Basal<br><small>1 min</small></span>
+        </button>
+
+        <button id="btn-phase2" class="btn-phase" disabled>
+          <span class="phase-number">2</span>
+          <span class="phase-text">Entrenamiento HRVB<br><small>3-5 min</small></span>
+        </button>
+
+        <button id="btn-phase3" class="btn-phase" disabled>
+          <span class="phase-number">3</span>
+          <span class="phase-text">Ver Historial<br><small>Resultados</small></span>
+        </button>
+      </div>
+
+      <!-- Información de sesión -->
+      <div class="session-info">
+        <h3>Información de Sesión</h3>
+        <output id="phase-info" class="phase-info">Esperando conexión Bluetooth...</output>
+      </div>
+
+      <footer class="panel-footer">
+        <p>
+          <strong>Modelo de Integración Neurovisceral</strong><br />
+          Sistema de modulación del estrés agudo mediante coherencia cardiorrespiratoria
+        </p>
+      </footer>
+    </aside>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
