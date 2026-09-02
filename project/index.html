@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Campo Generativo 01</title>
+  <title>HRV Biofeedback | Coherencia</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -11,8 +11,8 @@
     <section class="viewport-shell">
       <header class="project-header">
         <div>
-          <p class="eyebrow">COMPUTACIÓN AVANZADA · MCD UAI</p>
-          <h1>HRV Biofeedback</h1>
+          <p class="eyebrow">BIOFEEDBACK · MODELO NEUROVISCERAL</p>
+          <h1>Respira en coherencia</h1>
           <p class="subtitle">
             Sistema de modulación del estrés agudo basado en el Modelo de Integración Neurovisceral.
           </p>
@@ -22,7 +22,7 @@
       <div id="viewport"></div>
 
       <!-- Overlay de instrucciones de fase -->
-      <div id="phase-overlay" class="phase-overlay">
+      <div id="phase-overlay" class="phase-overlay hidden">
         <div class="instruction-container">
           <h2 id="instruction-title">Esperando conexión...</h2>
           <p id="instruction-text"></p>
@@ -30,22 +30,25 @@
         </div>
       </div>
 
-      <div class="hint">
-        Arrastra para orbitar · Rueda para acercar · Click derecho para desplazar
-      </div>
+      <div class="visual-readout"><span id="coherence-zone" class="zone-dot low"></span><strong id="coherence-label">Baja coherencia</strong><span id="coherence-score">0.0 / 10</span></div>
+      <section class="tacogram-panel" aria-label="Tacograma en tiempo real">
+        <div class="section-heading"><h2>Tacograma RR</h2><span>últimos 60 intervalos</span></div>
+        <canvas id="tacogram" aria-label="Gráfico de intervalos RR"></canvas>
+        <div class="tacogram-scale"><span>RR (ms)</span><span id="rr-range">--</span></div>
+      </section>
     </section>
 
     <!-- Panel de control de sesión HRV Biofeedback -->
     <aside class="controls-panel">
       <div class="panel-header">
         <p class="eyebrow">BIOFEEDBACK HRV</p>
-        <h2>Control de Sesión</h2>
+        <h2>Control de sesión</h2>
       </div>
 
       <!-- Botón de conexión Bluetooth -->
       <div class="connection-section">
         <button id="btn-conectar-main" class="btn-primary btn-connect">
-          🔵 CONECTAR COOSPO H6M
+          Conectar sensor BLE
         </button>
         <div id="connection-status" class="connection-status">
           Desconectado
@@ -54,23 +57,39 @@
 
       <!-- Botones de fases -->
       <div class="phases-section">
-        <h3>Fases de Sesión</h3>
+        <h3>Flujo de sesión</h3>
         
         <button id="btn-phase1" class="btn-phase" disabled>
           <span class="phase-number">1</span>
-          <span class="phase-text">Evaluación Basal<br><small>1 min</small></span>
+          <span class="phase-text">Evaluación basal<br><small>1 minuto · reposo</small></span>
         </button>
 
         <button id="btn-phase2" class="btn-phase" disabled>
           <span class="phase-number">2</span>
-          <span class="phase-text">Entrenamiento HRVB<br><small>3-5 min</small></span>
+          <span class="phase-text">Entrenamiento<br><small>3 minutos · pacer 0.1 Hz</small></span>
         </button>
 
         <button id="btn-phase3" class="btn-phase" disabled>
           <span class="phase-number">3</span>
-          <span class="phase-text">Ver Historial<br><small>Resultados</small></span>
+          <span class="phase-text">Historial<br><small>resultados guardados</small></span>
         </button>
       </div>
+
+      <section class="metrics-section" aria-label="Métricas de coherencia">
+        <div class="section-heading"><h3>Lectura en tiempo real</h3><button class="info-button" data-info="coherencia">i</button></div>
+        <div class="hero-metric"><span>Puntaje de coherencia</span><strong id="metric-coherence">0.0</strong><small>/ 10</small></div>
+        <div class="metric-grid">
+          <div><span>BPM</span><strong id="metric-bpm">--</strong></div>
+          <div><span>Intervalo RR <button class="info-button" data-info="rr">i</button></span><strong id="metric-rr">--</strong><small>ms</small></div>
+          <div><span>RMSSD <button class="info-button" data-info="rmssd">i</button></span><strong id="metric-rmssd">0.0</strong><small>ms</small></div>
+          <div><span>Resonancia <button class="info-button" data-info="resonancia">i</button></span><strong>0.1</strong><small>Hz</small></div>
+        </div>
+        <div class="zone-bars">
+          <div><span><i class="swatch low"></i>Baja</span><strong id="zone-low">0%</strong></div>
+          <div><span><i class="swatch medium"></i>Media</span><strong id="zone-medium">0%</strong></div>
+          <div><span><i class="swatch high"></i>Alta</span><strong id="zone-high">0%</strong></div>
+        </div>
+      </section>
 
       <!-- Información de sesión -->
       <div class="session-info">
@@ -80,12 +99,14 @@
 
       <footer class="panel-footer">
         <p>
-          <strong>Modelo de Integración Neurovisceral</strong><br />
-          Sistema de modulación del estrés agudo mediante coherencia cardiorrespiratoria
+          <strong>HeartMath · respiración resonante</strong><br />
+          4 segundos inhalar · 6 segundos exhalar
         </p>
       </footer>
     </aside>
   </main>
+
+  <dialog id="info-dialog" class="info-dialog"><button class="dialog-close" aria-label="Cerrar">×</button><p class="eyebrow">APRENDER</p><h2 id="info-title"></h2><p id="info-text"></p></dialog>
 
   <script type="importmap">
     {

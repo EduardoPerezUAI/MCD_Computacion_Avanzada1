@@ -24,6 +24,8 @@ const VENTANA_RR = 12;
 const MIN_RR = 400;
 const MAX_RR = 1200;
 const intervalosRR = [inputA, inputB];
+const historialTacograma = [...intervalosRR];
+const tiempoZonas = { baja: 0, media: 0, alta: 0 };
 let rmssd = 0;
 let factorSomatico = 0;
 let factorSomaticoObjetivo = 0;
@@ -34,13 +36,13 @@ let dispersionRR = 0;
 let pulsoRadial = 0;
 
 // ======================================================
-// 02 — ESCENA
+// 02 — ESCENA: ORBE RESPIRATORIO
 // ======================================================
 
 const viewport = document.querySelector("#viewport");
 
 const escena = new THREE.Scene();
-escena.background = new THREE.Color(0xf5f7ff);
+escena.background = new THREE.Color(0x080b10);
 
 const camara = new THREE.PerspectiveCamera(
   42,
@@ -68,66 +70,36 @@ controlesOrbita.minDistance = 7;
 controlesOrbita.maxDistance = 32;
 controlesOrbita.target.set(0, 0, 0);
 
-// Iluminación general.
-const luzAmbiente = new THREE.AmbientLight(0xdcecff, 1.1);
+const luzAmbiente = new THREE.AmbientLight(0x243142, 1.2);
 escena.add(luzAmbiente);
 
-const luzHemisferica = new THREE.HemisphereLight(0xf3efe5, 0x202229, 1.8);
+const luzHemisferica = new THREE.HemisphereLight(0xd9f4ff, 0x10131a, 2.2);
 escena.add(luzHemisferica);
 
 // Luz principal.
-const luzPrincipal = new THREE.DirectionalLight(0xffffff, 3.2);
+const luzPrincipal = new THREE.PointLight(0x48d6a0, 10, 24);
 luzPrincipal.position.set(10, 18, 12);
-luzPrincipal.castShadow = true;
 escena.add(luzPrincipal);
 
 // Luz secundaria para suavizar el contraste.
-const luzRelleno = new THREE.DirectionalLight(0xc8d8ff, 1.4);
+const luzRelleno = new THREE.PointLight(0x4d8dff, 7, 22);
 luzRelleno.position.set(-8, 6, -6);
 escena.add(luzRelleno);
 
 // Plano base.
-const suelo = new THREE.Mesh(
-  new THREE.PlaneGeometry(60, 60),
-  new THREE.MeshStandardMaterial({
-    color: 0xf5f7ff,
-    roughness: 1,
-    metalness: 0,
-    transparent: true,
-    opacity: 0,
-  })
-);
-
-suelo.rotation.x = -Math.PI / 2;
-suelo.position.y = -0.03;
-suelo.receiveShadow = true;
-escena.add(suelo);
-
-// Grilla de referencia para leer mejor escala y posición.
-const grilla = new THREE.GridHelper(50, 50, 0x35383d, 0x202227);
-grilla.position.y = 0.001;
-grilla.visible = false;
-escena.add(grilla);
-
-// ======================================================
-// 03 — OBJETO GENERATIVO
-// ======================================================
-
 const grupoCampo = new THREE.Group();
 escena.add(grupoCampo);
 
 const reloj = new THREE.Clock();
 const paradasCromaticas = [
-  { factor: 0.00, color: new THREE.Color("#660000") },
-  { factor: 0.25, color: new THREE.Color("#FF3300") },
-  { factor: 0.50, color: new THREE.Color("#FFCC00") },
-  { factor: 0.75, color: new THREE.Color("#00CC66") },
-  { factor: 1.00, color: new THREE.Color("#0066FF") },
+  { factor: 0.00, color: new THREE.Color("#e45757") },
+  { factor: 0.40, color: new THREE.Color("#4c8dff") },
+  { factor: 1.00, color: new THREE.Color("#42d392") },
 ];
 const colorTemporal = new THREE.Color();
 const colorSomatico = new THREE.Color("#660000");
 let anillo = null;
-const ruidoAutomatico = [];
+let aura = null;
 
 // ======================================================
 // 04 — REGLAS GENERATIVAS
@@ -211,9 +183,69 @@ function registrarIntervaloRR(intervalo) {
   inputA = inputB;
   inputB = intervaloSeguro;
   intervalosRR.push(intervaloSeguro);
+  historialTacograma.push(intervaloSeguro);
+  if (historialTacograma.length > 60) historialTacograma.shift();
+  if (faseActual === estadoFases?.ENTRENAMIENTO) {
+    const zona = obtenerZonaCoherencia(factorSomaticoObjetivo);
+    tiempoZonas[zona] += intervaloSeguro / 1000;
+  }
   if (intervalosRR.length > VENTANA_RR) intervalosRR.shift();
   actualizarTendenciaBiometrica();
   actualizarLecturaBiometrica();
+}
+
+function obtenerZonaCoherencia(valor) {
+  if (valor > 0.7) return "alta";
+  if (valor >= 0.4) return "media";
+  return "baja";
+}
+
+function actualizarVisualizacionHRV() {
+  const zona = obtenerZonaCoherencia(factorSomatico);
+  const etiquetas = { baja: "Baja coherencia", media: "Coherencia media", alta: "Alta coherencia" };
+  const indicador = document.querySelector("#coherence-zone");
+  indicador.className = `zone-dot ${zona}`;
+  document.querySelector("#coherence-label").textContent = etiquetas[zona];
+  document.querySelector("#coherence-score").textContent = `${(factorSomatico * 10).toFixed(1)} / 10`;
+  document.querySelector("#metric-coherence").textContent = (factorSomatico * 10).toFixed(1);
+  document.querySelector("#metric-bpm").textContent = bpm || "--";
+  document.querySelector("#metric-rr").textContent = Math.round(mediaRRVisual);
+  document.querySelector("#metric-rmssd").textContent = rmssd.toFixed(1);
+
+  const total = Object.values(tiempoZonas).reduce((suma, valor) => suma + valor, 0);
+  const idsZona = { baja: "low", media: "medium", alta: "high" };
+  for (const [nombre, tiempo] of Object.entries(tiempoZonas)) {
+    const porcentaje = total ? Math.round((tiempo / total) * 100) : 0;
+    document.querySelector(`#zone-${idsZona[nombre]}`).textContent = `${porcentaje}%`;
+  }
+  dibujarTacograma();
+}
+
+function dibujarTacograma() {
+  const lienzo = document.querySelector("#tacogram");
+  if (!lienzo) return;
+  const escala = window.devicePixelRatio || 1;
+  const ancho = lienzo.clientWidth || 420;
+  const alto = lienzo.clientHeight || 150;
+  lienzo.width = ancho * escala;
+  lienzo.height = alto * escala;
+  const contexto = lienzo.getContext("2d");
+  contexto.scale(escala, escala);
+  contexto.clearRect(0, 0, ancho, alto);
+  const valores = historialTacograma;
+  if (valores.length < 2) return;
+  const minimo = Math.min(...valores) - 20;
+  const maximo = Math.max(...valores) + 20;
+  contexto.strokeStyle = "#42d392";
+  contexto.lineWidth = 2;
+  contexto.beginPath();
+  valores.forEach((valor, indice) => {
+    const x = (indice / (valores.length - 1)) * ancho;
+    const y = alto - ((valor - minimo) / Math.max(maximo - minimo, 1)) * (alto - 12) - 6;
+    if (indice === 0) contexto.moveTo(x, y); else contexto.lineTo(x, y);
+  });
+  contexto.stroke();
+  document.querySelector("#rr-range").textContent = `${Math.round(minimo + 20)}–${Math.round(maximo - 20)} ms`;
 }
 
 function mapearColorSomatico(factor, destino) {
@@ -231,26 +263,20 @@ function mapearColorSomatico(factor, destino) {
 }
 
 function crearAnillo() {
-  const count = Math.max(400, Math.round(parametros.densidad));
-  ruidoAutomatico.length = 0;
-  for (let indice = 0; indice < count; indice++) {
-    ruidoAutomatico.push(aleatoriedadConSemilla(indice, 0, parametros.semilla));
-  }
-  const geometria = new THREE.SphereGeometry(1, 12, 8);
+  const geometria = new THREE.IcosahedronGeometry(2.5, 5);
   const material = new THREE.MeshStandardMaterial({
-    color: "#660000",
-    roughness: 0.42,
-    metalness: 0.05,
-    transparent: true,
-    opacity: 1,
+    color: "#e45757", roughness: 0.25, metalness: 0.08,
+    emissive: "#e45757", emissiveIntensity: 0.35,
   });
+  anillo = new THREE.Mesh(geometria, material);
+  anillo.castShadow = true;
+  grupoCampo.add(anillo);
 
-  const esferas = new THREE.InstancedMesh(geometria, material, count);
-  esferas.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  esferas.userData = { count };
-  esferas.castShadow = true;
-  grupoCampo.add(esferas);
-  anillo = esferas;
+  aura = new THREE.Mesh(
+    new THREE.SphereGeometry(2.9, 32, 24),
+    new THREE.MeshBasicMaterial({ color: "#e45757", transparent: true, opacity: 0.08, depthWrite: false })
+  );
+  grupoCampo.add(aura);
 }
 
 function limpiarCampo() {
@@ -258,7 +284,13 @@ function limpiarCampo() {
   grupoCampo.remove(anillo);
   anillo.geometry.dispose();
   anillo.material.dispose();
+  if (aura) {
+    grupoCampo.remove(aura);
+    aura.geometry.dispose();
+    aura.material.dispose();
+  }
   anillo = null;
+  aura = null;
 }
 
 function generarCampo() {
@@ -267,17 +299,12 @@ function generarCampo() {
 }
 
 function actualizarAnillo(tiempo) {
-  const puntos = anillo;
-  if (!puntos) return;
-
-  const cantidad = puntos.count;
-  const matrizParticula = new THREE.Object3D();
+  if (!anillo) return;
 
   // ========================================
   // PACER RESPIRATORIO (Fase 2 solamente)
   // ========================================
-  let radioBase = 4.6;
-  let factorPacer = 0; // 0 = exhalación, 1 = inhalación
+  let factorPacer = 0.18;
   
   if (faseActual === estadoFases.ENTRENAMIENTO) {
     // Calcular posición en el ciclo respiratorio
@@ -294,50 +321,24 @@ function actualizarAnillo(tiempo) {
       factorPacer = 1 - posicionExhalacion;
     }
     
-    // Expandir y contraer el anillo según el pacer
-    // Inhalación = expansión, Exhalación = contracción
-    radioBase = 4.6 + factorPacer * 0.8; // Variación de ±0.8 en el radio base
+    // Inhalación expande el orbe durante 4s; exhalación lo contrae durante 6s.
   }
 
-  const frecuenciaRitmo = frecuenciaLatido;
-  const faseCardiaca = tiempo * frecuenciaRitmo * Math.PI * 2;
-  const pulsoObjetivo = Math.sin(faseCardiaca) * parametros.amplitud * 0.012;
-  pulsoRadial = THREE.MathUtils.lerp(pulsoRadial, pulsoObjetivo, 0.08);
-  
-  // Durante entrenamiento, la turbulencia disminuye si hay coherencia
-  let grosorPerfil;
-  if (faseActual === estadoFases.ENTRENAMIENTO) {
-    // Si el usuario tiene alta coherencia (RMSSD alto), menos turbulencia
-    grosorPerfil = THREE.MathUtils.lerp(0.012, parametros.dispersión * (1 - factorSomatico), factorSomatico);
-  } else {
-    grosorPerfil = THREE.MathUtils.lerp(0.012, parametros.dispersión, factorSomatico);
-  }
-  
+  const pulso = 1 + Math.sin(tiempo * frecuenciaLatido * Math.PI * 2) * 0.018;
+  const escala = THREE.MathUtils.lerp(0.86, 1.2, factorPacer) * pulso;
   mapearColorSomatico(factorSomatico, colorTemporal);
   colorSomatico.lerp(colorTemporal, 0.08);
-  puntos.material.color.copy(colorSomatico);
-
-  for (let indice = 0; indice < cantidad; indice++) {
-    const progreso = indice / cantidad;
-    const angulo = progreso * Math.PI * 2;
-    const ruido = ruidoAutomatico[indice % ruidoAutomatico.length] || 0;
-    const faseParticula = faseCardiaca + ruido * 0.35;
-    const contraccionRadial = Math.sin(faseParticula) * pulsoRadial * 0.35;
-    const dispersionAleatoria = ruido * parametros.aleatoriedad * grosorPerfil * 0.35;
-    const radio = radioBase + pulsoRadial + ruido * grosorPerfil +
-      dispersionAleatoria + contraccionRadial;
-
-    const x = Math.cos(angulo) * radio;
-    const y = Math.sin(angulo) * radio;
-    const z = 0;
-
-    matrizParticula.position.set(x, y, z);
-    matrizParticula.scale.setScalar(parametros.tamaño);
-    matrizParticula.updateMatrix();
-    puntos.setMatrixAt(indice, matrizParticula.matrix);
+  anillo.material.color.copy(colorSomatico);
+  anillo.material.emissive.copy(colorSomatico);
+  anillo.material.emissiveIntensity = 0.25 + factorSomatico * 0.65;
+  anillo.scale.setScalar(escala);
+  anillo.rotation.y += 0.0015;
+  anillo.rotation.x = Math.sin(tiempo * 0.22) * 0.08;
+  if (aura) {
+    aura.material.color.copy(colorSomatico);
+    aura.material.opacity = 0.06 + factorSomatico * 0.08;
+    aura.scale.setScalar(escala * 1.08);
   }
-
-  puntos.instanceMatrix.needsUpdate = true;
 }
 
 function actualizarCampoAnimado() {
@@ -529,6 +530,9 @@ function iniciarEntrenamiento() {
   faseActual = estadoFases.ENTRENAMIENTO;
   tiempoFaseInicio = reloj.getElapsedTime();
   tiempoFaseDuracion = 180; // 3 minutos (pueden ajustar a 300 para 5 minutos)
+  tiempoZonas.baja = 0;
+  tiempoZonas.media = 0;
+  tiempoZonas.alta = 0;
   
   actualizarInstrucciones(
     "Entrenamiento HRVB",
@@ -561,6 +565,7 @@ function terminarFase() {
     console.log(`[MEJORA] Δ RMSSD: ${cambioRMSSD.toFixed(1)} ms (${porcentajeMejora}%)`);
     
     // Registrar en historial
+    const totalZonas = Object.values(tiempoZonas).reduce((suma, valor) => suma + valor, 0) || 1;
     const registro = {
       fecha: new Date().toISOString(),
       rmssdBasal: parseFloat(rmssdBasal.toFixed(1)),
@@ -568,6 +573,7 @@ function terminarFase() {
       cambio: parseFloat(cambioRMSSD.toFixed(1)),
       porcentajeMejora: parseFloat(porcentajeMejora),
       coherencia: parseFloat(factorSomatico.toFixed(2)),
+      zonas: Object.fromEntries(Object.entries(tiempoZonas).map(([zona, tiempo]) => [zona, Math.round((tiempo / totalZonas) * 100)])),
     };
     
     registroHistorial.push(registro);
@@ -763,9 +769,25 @@ function actualizarLecturaBiometrica() {
   console.log(
     `Estado: ${estadoConexion} | BPM: ${bpm || "--"} | A: ${inputA} ms | B: ${inputB} ms | RMSSD: ${rmssd.toFixed(1)} ms | Coherencia: ${factorSomatico.toFixed(2)}`
   );
+  actualizarVisualizacionHRV();
 }
 
 botonConectar.addEventListener("click", conectarSensorCardiaco);
+
+const textosInformativos = {
+  coherencia: ["Coherencia cardíaca", "Estado de sincronización fisiológica donde el ritmo cardíaco se vuelve una onda armónica y fluida."],
+  rr: ["Intervalo RR", "El tiempo en milisegundos entre cada latido consecutivo del corazón."],
+  resonancia: ["Frecuencia de resonancia · 0.1 Hz", "Ritmo óptimo de respiración, aproximadamente 6 respiraciones por minuto, que estimula el nervio vago y equilibra el sistema nervioso."],
+  rmssd: ["RMSSD", "Métrica que refleja la actividad del sistema parasimpático y la capacidad de recuperación ante el estrés."],
+};
+const dialogoInfo = document.querySelector("#info-dialog");
+document.querySelectorAll("[data-info]").forEach((boton) => boton.addEventListener("click", () => {
+  const [titulo, texto] = textosInformativos[boton.dataset.info];
+  document.querySelector("#info-title").textContent = titulo;
+  document.querySelector("#info-text").textContent = texto;
+  dialogoInfo.showModal();
+}));
+document.querySelector(".dialog-close").addEventListener("click", () => dialogoInfo.close());
 
 // Inicializar
 cargarHistorial();
@@ -797,6 +819,7 @@ function ajustarVentana() {
 }
 
 window.addEventListener("resize", ajustarVentana);
+window.addEventListener("resize", dibujarTacograma);
 
 generarCampo();
 animar();
