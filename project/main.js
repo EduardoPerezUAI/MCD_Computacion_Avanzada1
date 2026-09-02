@@ -649,7 +649,7 @@ function actualizarBotonesPhase() {
   const btn3 = document.querySelector("#btn-phase3");
   const phaseInfo = document.querySelector("#phase-info");
   
-  const estaConectado = Boolean(caracteristicaFrecuenciaCardiaca);
+  const estaConectado = Boolean(caracteristicaFrecuenciaCardiaca || camaraActiva);
   
   btn1.disabled = !estaConectado || faseActual !== estadoFases.ESPERA;
   btn2.disabled = !estaConectado || faseActual !== estadoFases.RESULTADOS_BASAL;
@@ -681,9 +681,16 @@ function actualizarBotonesPhase() {
 let dispositivoBluetooth = null;
 let caracteristicaFrecuenciaCardiaca = null;
 let estadoConexion = "Desconectado";
+let flujoCamara = null;
+let camaraActiva = false;
+let cuadroCamara = null;
+let videoCamara = null;
+let muestrasPPG = [];
+let ultimaCrestaPPG = 0;
 
 // Elementos UI
 const botonConectar = document.querySelector("#btn-conectar-main");
+const botonCamara = document.querySelector("#btn-camera-main");
 const statusConexion = document.querySelector("#connection-status");
 const btn1 = document.querySelector("#btn-phase1");
 const btn2 = document.querySelector("#btn-phase2");
@@ -696,6 +703,7 @@ const trainingDurationValue = document.querySelector("#training-duration-value")
 // Listeners de botones de fase
 btn1.addEventListener("click", iniciarEvaluacionBasal);
 btn2.addEventListener("click", iniciarEntrenamiento);
+botonCamara.addEventListener("click", iniciarCamaraPPG);
 document.querySelector("#btn-start-training").addEventListener("click", iniciarEntrenamiento);
 trainingDuration.addEventListener("input", () => {
   trainingDurationValue.value = trainingDuration.value;
@@ -717,6 +725,97 @@ function actualizarEstadoBluetooth(estado, conectado = false) {
   }
   
   actualizarBotonesPhase();
+}
+
+async function iniciarCamaraPPG() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    actualizarEstadoBluetooth("Cámara no disponible en este navegador");
+    return;
+  }
+  try {
+    actualizarEstadoBluetooth("Solicitando acceso a la cámara...");
+    flujoCamara = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+    videoCamara = document.querySelector("#camera-preview");
+    videoCamara.srcObject = flujoCamara;
+    videoCamara.classList.add("active");
+    await videoCamara.play();
+    const pista = flujoCamara.getVideoTracks()[0];
+    if (pista.getCapabilities?.().torch) {
+      await pista.applyConstraints({ advanced: [{ torch: true }] });
+    }
+    cuadroCamara = document.createElement("canvas");
+    cuadroCamara.width = 32;
+    cuadroCamara.height = 32;
+    muestrasPPG = [];
+    ultimaCrestaPPG = 0;
+    camaraActiva = true;
+    botonCamara.textContent = "Cámara activa · detener";
+    botonCamara.onclick = detenerCamaraPPG;
+    actualizarEstadoBluetooth("Cámara activa · coloca el dedo sobre el lente", true);
+    leerPulsoCamara();
+  } catch (error) {
+    detenerCamaraPPG();
+    actualizarEstadoBluetooth(error.name === "NotAllowedError" ? "Permiso de cámara rechazado" : "No se pudo activar la cámara");
+  }
+}
+
+function detenerCamaraPPG() {
+  flujoCamara?.getTracks().forEach((pista) => pista.stop());
+  flujoCamara = null;
+  camaraActiva = false;
+  if (videoCamara) {
+    videoCamara.srcObject = null;
+    videoCamara.classList.remove("active");
+  }
+  if (botonCamara) {
+    botonCamara.textContent = "Usar cámara como sensor";
+    botonCamara.onclick = iniciarCamaraPPG;
+  }
+  if (estadoConexion.startsWith("Cámara")) actualizarEstadoBluetooth("Desconectado", false);
+  actualizarBotonesPhase();
+}
+
+function leerPulsoCamara() {
+  if (!camaraActiva || !videoCamara?.videoWidth) {
+    if (camaraActiva) requestAnimationFrame(leerPulsoCamara);
+    return;
+  }
+  const contexto = cuadroCamara.getContext("2d", { willReadFrequently: true });
+  contexto.drawImage(videoCamara, 0, 0, 32, 32);
+  const pixeles = contexto.getImageData(0, 0, 32, 32).data;
+  let rojo = 0;
+  let verde = 0;
+  for (let indice = 0; indice < pixeles.length; indice += 4) {
+    rojo += pixeles[indice];
+    verde += pixeles[indice + 1];
+  }
+  const cantidadPixeles = pixeles.length / 4;
+  muestrasPPG.push({ tiempo: performance.now(), valor: rojo / cantidadPixeles - verde / cantidadPixeles });
+  if (muestrasPPG.length > 40) muestrasPPG.shift();
+  detectarLatidoPPG();
+  requestAnimationFrame(leerPulsoCamara);
+}
+
+function detectarLatidoPPG() {
+  if (muestrasPPG.length < 7) return;
+  const candidato = muestrasPPG.at(-4);
+  const vecinos = muestrasPPG.slice(-7);
+  const promedio = vecinos.reduce((suma, muestra) => suma + muestra.valor, 0) / vecinos.length;
+  const desviacion = Math.sqrt(vecinos.reduce((suma, muestra) => suma + (muestra.valor - promedio) ** 2, 0) / vecinos.length);
+  const esCresta = candidato.valor === Math.max(...vecinos.map((muestra) => muestra.valor));
+  const intervalo = candidato.tiempo - ultimaCrestaPPG;
+  if (!esCresta || candidato.valor < promedio + desviacion * 0.35) return;
+  if (!ultimaCrestaPPG) {
+    ultimaCrestaPPG = candidato.tiempo;
+    return;
+  }
+  if (intervalo < 350 || intervalo > 1500) return;
+  ultimaCrestaPPG = candidato.tiempo;
+  bpm = Math.round(60000 / intervalo);
+  registrarIntervaloRR(intervalo);
 }
 
 function decodificarMedicionFrecuenciaCardiaca(event) {

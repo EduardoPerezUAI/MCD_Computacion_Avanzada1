@@ -151,6 +151,46 @@ h1 {
   padding: 14px 12px;
 }
 
+.btn-secondary {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-soft);
+  font: 11px -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.camera-preview {
+  display: none;
+  width: 100%;
+  max-height: 120px;
+  object-fit: cover;
+  transform: scaleX(-1);
+  border: 1px solid var(--line);
+  background: #050709;
+}
+
+.camera-help {
+  display: none;
+  margin: -4px 0 0;
+  color: var(--text-faint);
+  font: 10px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.camera-preview.active {
+  display: block;
+}
+
+.camera-preview.active + .camera-help {
+  display: block;
+}
+
 .connection-status {
   font-size: 11px;
   color: var(--text-faint);
