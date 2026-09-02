@@ -27,12 +27,17 @@
           <h2 id="instruction-title">Esperando conexión...</h2>
           <p id="instruction-text"></p>
           <div id="timer-display" class="timer-display">--:--</div>
+          <div id="training-config" class="training-config hidden">
+            <label for="training-duration">Duración del entrenamiento <strong><output id="training-duration-value">3</output> min</strong></label>
+            <input id="training-duration" type="range" min="2" max="15" value="3" />
+            <button id="btn-start-training" class="btn-primary">Iniciar entrenamiento de coherencia</button>
+          </div>
         </div>
       </div>
 
       <div class="visual-readout"><span id="coherence-zone" class="zone-dot low"></span><strong id="coherence-label">Baja coherencia</strong><span id="coherence-score">0.0 / 10</span></div>
       <section class="tacogram-panel" aria-label="Tacograma en tiempo real">
-        <div class="section-heading"><h2>Tacograma RR</h2><span>últimos 60 intervalos</span></div>
+        <div class="section-heading"><h2>Tacograma RR</h2><span>últimos 50 intervalos</span></div>
         <canvas id="tacogram" aria-label="Gráfico de intervalos RR"></canvas>
         <div class="tacogram-scale"><span>RR (ms)</span><span id="rr-range">--</span></div>
       </section>
@@ -61,12 +66,12 @@
         
         <button id="btn-phase1" class="btn-phase" disabled>
           <span class="phase-number">1</span>
-          <span class="phase-text">Evaluación basal<br><small>1 minuto · reposo</small></span>
+          <span class="phase-text">Evaluación de coherencia basal<br><small>1 minuto · tono vagal / RMSSD</small></span>
         </button>
 
         <button id="btn-phase2" class="btn-phase" disabled>
           <span class="phase-number">2</span>
-          <span class="phase-text">Entrenamiento<br><small>3 minutos · pacer 0.1 Hz</small></span>
+          <span class="phase-text">Entrenamiento de coherencia cardíaca<br><small>2–15 minutos · pacer 0.1 Hz</small></span>
         </button>
 
         <button id="btn-phase3" class="btn-phase" disabled>
@@ -84,6 +89,7 @@
           <div><span>RMSSD <button class="info-button" data-info="rmssd">i</button></span><strong id="metric-rmssd">0.0</strong><small>ms</small></div>
           <div><span>Resonancia <button class="info-button" data-info="resonancia">i</button></span><strong>0.1</strong><small>Hz</small></div>
         </div>
+        <p class="zone-title">Porcentaje de tiempo en coherencia</p>
         <div class="zone-bars">
           <div><span><i class="swatch low"></i>Baja</span><strong id="zone-low">0%</strong></div>
           <div><span><i class="swatch medium"></i>Media</span><strong id="zone-medium">0%</strong></div>

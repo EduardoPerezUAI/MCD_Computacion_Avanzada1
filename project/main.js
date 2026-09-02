@@ -99,7 +99,7 @@ const paradasCromaticas = [
 const colorTemporal = new THREE.Color();
 const colorSomatico = new THREE.Color("#660000");
 let anillo = null;
-let aura = null;
+let esferaExterior = null;
 
 // ======================================================
 // 04 — REGLAS GENERATIVAS
@@ -184,7 +184,7 @@ function registrarIntervaloRR(intervalo) {
   inputB = intervaloSeguro;
   intervalosRR.push(intervaloSeguro);
   historialTacograma.push(intervaloSeguro);
-  if (historialTacograma.length > 60) historialTacograma.shift();
+  if (historialTacograma.length > 50) historialTacograma.shift();
   if (faseActual === estadoFases?.ENTRENAMIENTO) {
     const zona = obtenerZonaCoherencia(factorSomaticoObjetivo);
     tiempoZonas[zona] += intervaloSeguro / 1000;
@@ -263,6 +263,12 @@ function mapearColorSomatico(factor, destino) {
 }
 
 function crearAnillo() {
+  esferaExterior = new THREE.Mesh(
+    new THREE.SphereGeometry(3, 32, 24),
+    new THREE.MeshBasicMaterial({ color: "#71817f", wireframe: true, transparent: true, opacity: 0.2 })
+  );
+  grupoCampo.add(esferaExterior);
+
   const geometria = new THREE.IcosahedronGeometry(2.5, 5);
   const material = new THREE.MeshStandardMaterial({
     color: "#e45757", roughness: 0.25, metalness: 0.08,
@@ -271,12 +277,6 @@ function crearAnillo() {
   anillo = new THREE.Mesh(geometria, material);
   anillo.castShadow = true;
   grupoCampo.add(anillo);
-
-  aura = new THREE.Mesh(
-    new THREE.SphereGeometry(2.9, 32, 24),
-    new THREE.MeshBasicMaterial({ color: "#e45757", transparent: true, opacity: 0.08, depthWrite: false })
-  );
-  grupoCampo.add(aura);
 }
 
 function limpiarCampo() {
@@ -284,13 +284,13 @@ function limpiarCampo() {
   grupoCampo.remove(anillo);
   anillo.geometry.dispose();
   anillo.material.dispose();
-  if (aura) {
-    grupoCampo.remove(aura);
-    aura.geometry.dispose();
-    aura.material.dispose();
+  if (esferaExterior) {
+    grupoCampo.remove(esferaExterior);
+    esferaExterior.geometry.dispose();
+    esferaExterior.material.dispose();
   }
   anillo = null;
-  aura = null;
+  esferaExterior = null;
 }
 
 function generarCampo() {
@@ -300,6 +300,10 @@ function generarCampo() {
 
 function actualizarAnillo(tiempo) {
   if (!anillo) return;
+  if (esferaExterior) {
+    esferaExterior.rotation.y -= 0.0004;
+    esferaExterior.rotation.x = Math.sin(tiempo * 0.12) * 0.03;
+  }
 
   // ========================================
   // PACER RESPIRATORIO (Fase 2 solamente)
@@ -325,7 +329,7 @@ function actualizarAnillo(tiempo) {
   }
 
   const pulso = 1 + Math.sin(tiempo * frecuenciaLatido * Math.PI * 2) * 0.018;
-  const escala = THREE.MathUtils.lerp(0.86, 1.2, factorPacer) * pulso;
+  const escala = THREE.MathUtils.lerp(0.5, 1.18, factorPacer) * pulso;
   mapearColorSomatico(factorSomatico, colorTemporal);
   colorSomatico.lerp(colorTemporal, 0.08);
   anillo.material.color.copy(colorSomatico);
@@ -334,11 +338,6 @@ function actualizarAnillo(tiempo) {
   anillo.scale.setScalar(escala);
   anillo.rotation.y += 0.0015;
   anillo.rotation.x = Math.sin(tiempo * 0.22) * 0.08;
-  if (aura) {
-    aura.material.color.copy(colorSomatico);
-    aura.material.opacity = 0.06 + factorSomatico * 0.08;
-    aura.scale.setScalar(escala * 1.08);
-  }
 }
 
 function actualizarCampoAnimado() {
@@ -462,7 +461,8 @@ const estadoFases = {
   ESPERA: 0,           // Phase 0: Esperando conexión BLE
   EVALUACION: 1,       // Phase 1: Evaluación basal (60 segundos)
   ENTRENAMIENTO: 2,    // Phase 2: Entrenamiento HRVB (3-5 minutos)
-  HISTORIAL: 3,        // Phase 3: Ver historial / resultados
+  RESULTADOS_BASAL: 3, // Pausa para revisar el estado inicial
+  HISTORIAL: 4,        // Phase 3: Ver historial / resultados
 };
 
 let faseActual = estadoFases.ESPERA;
@@ -471,6 +471,7 @@ let tiempoFaseDuracion = 0;
 let rmssdBasal = 0;
 let rmssdFinal = 0;
 let registroHistorial = [];
+let registroBasal = null;
 
 // Pacer respiratorio: 0.1 Hz = 10 segundos por ciclo (6 ciclos/min)
 // Inhalación: 4 segundos, Exhalación: 6 segundos
@@ -510,6 +511,7 @@ function iniciarEvaluacionBasal() {
   tiempoFaseInicio = reloj.getElapsedTime();
   tiempoFaseDuracion = 60; // 60 segundos
   rmssdBasal = 0;
+  timerDisplay.classList.remove("complete");
   
   actualizarInstrucciones(
     "Evaluación Basal",
@@ -522,14 +524,15 @@ function iniciarEvaluacionBasal() {
 
 // Iniciar Fase 2: Entrenamiento HRVB (3-5 minutos con pacer)
 function iniciarEntrenamiento() {
-  if (!caracteristicaFrecuenciaCardiaca) {
+  if (!caracteristicaFrecuenciaCardiaca || faseActual !== estadoFases.RESULTADOS_BASAL) {
     console.warn("Sensor Bluetooth no conectado");
     return;
   }
   
   faseActual = estadoFases.ENTRENAMIENTO;
   tiempoFaseInicio = reloj.getElapsedTime();
-  tiempoFaseDuracion = 180; // 3 minutos (pueden ajustar a 300 para 5 minutos)
+  const duracionInput = document.querySelector("#training-duration");
+  tiempoFaseDuracion = Number(duracionInput.value) * 60;
   tiempoZonas.baja = 0;
   tiempoZonas.media = 0;
   tiempoZonas.alta = 0;
@@ -552,8 +555,9 @@ function terminarFase() {
     rmssdBasal = rmssd;
     console.log(`[FASE 1 - FIN] RMSSD Basal: ${rmssdBasal.toFixed(1)} ms`);
     
-    // Transición a Fase 2
-    setTimeout(() => iniciarEntrenamiento(), 1000);
+    registroBasal = { rmssd: rmssdBasal, coherencia: factorSomatico };
+    faseActual = estadoFases.RESULTADOS_BASAL;
+    mostrarResultadosBasales(registroBasal);
   } 
   else if (faseActual === estadoFases.ENTRENAMIENTO) {
     // Guardar RMSSD final
@@ -593,6 +597,7 @@ function actualizarInstrucciones(titulo, texto, duracion) {
   
   titleEl.textContent = titulo;
   textEl.textContent = texto;
+  document.querySelector("#training-config").classList.add("hidden");
   
   overlay.classList.remove("hidden");
 }
@@ -624,6 +629,19 @@ function mostrarResultados(registro) {
   timerEl.classList.add("complete");
 }
 
+function mostrarResultadosBasales(registro) {
+  const overlay = document.querySelector("#phase-overlay");
+  document.querySelector("#instruction-title").textContent = "Resultados basales";
+  document.querySelector("#instruction-text").innerHTML = `
+    <strong>RMSSD: ${registro.rmssd.toFixed(1)} ms</strong><br>
+    Coherencia inicial: <strong>${registro.coherencia.toFixed(2)}</strong><br><br>
+    Tu nivel de coherencia de reposo indica tu estado actual de tono vagal y flexibilidad autonómica antes de ejercitar.
+  `;
+  document.querySelector("#timer-display").textContent = "01:00";
+  document.querySelector("#training-config").classList.remove("hidden");
+  overlay.classList.remove("hidden");
+}
+
 // Actualizar UI de los botones de fase
 function actualizarBotonesPhase() {
   const btn1 = document.querySelector("#btn-phase1");
@@ -634,13 +652,14 @@ function actualizarBotonesPhase() {
   const estaConectado = Boolean(caracteristicaFrecuenciaCardiaca);
   
   btn1.disabled = !estaConectado || faseActual !== estadoFases.ESPERA;
-  btn2.disabled = !estaConectado || faseActual !== estadoFases.ESPERA;
+  btn2.disabled = !estaConectado || faseActual !== estadoFases.RESULTADOS_BASAL;
   btn3.disabled = registroHistorial.length === 0;
   
   // Actualizar indicador de fase activa
   [btn1, btn2, btn3].forEach(btn => btn.classList.remove("active"));
   if (faseActual === estadoFases.EVALUACION) btn1.classList.add("active");
   if (faseActual === estadoFases.ENTRENAMIENTO) btn2.classList.add("active");
+  if (faseActual === estadoFases.RESULTADOS_BASAL) btn2.classList.add("active");
   if (faseActual === estadoFases.HISTORIAL) btn3.classList.add("active");
   
   // Actualizar información de sesión
@@ -650,6 +669,8 @@ function actualizarBotonesPhase() {
     phaseInfo.textContent = `RMSSD Actual: ${rmssd.toFixed(1)} ms\nCoherencia: ${factorSomatico.toFixed(2)}`;
   } else if (faseActual === estadoFases.ENTRENAMIENTO) {
     phaseInfo.textContent = `Basal: ${rmssdBasal.toFixed(1)} ms\nActual: ${rmssd.toFixed(1)} ms\nCoherencia: ${factorSomatico.toFixed(2)}`;
+  } else if (faseActual === estadoFases.RESULTADOS_BASAL) {
+    phaseInfo.textContent = `Resultados basales · RMSSD: ${rmssdBasal.toFixed(1)} ms · Elige la duración del entrenamiento`;
   }
 }
 
@@ -669,10 +690,16 @@ const btn2 = document.querySelector("#btn-phase2");
 const btn3 = document.querySelector("#btn-phase3");
 const overlayInstrucciones = document.querySelector("#phase-overlay");
 const timerDisplay = document.querySelector("#timer-display");
+const trainingDuration = document.querySelector("#training-duration");
+const trainingDurationValue = document.querySelector("#training-duration-value");
 
 // Listeners de botones de fase
 btn1.addEventListener("click", iniciarEvaluacionBasal);
 btn2.addEventListener("click", iniciarEntrenamiento);
+document.querySelector("#btn-start-training").addEventListener("click", iniciarEntrenamiento);
+trainingDuration.addEventListener("input", () => {
+  trainingDurationValue.value = trainingDuration.value;
+});
 btn3.addEventListener("click", () => {
   if (registroHistorial.length > 0) {
     mostrarHistorialCompleto();
