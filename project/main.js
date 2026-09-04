@@ -116,10 +116,7 @@ function calcularRMSSD() {
 }
 
 function calcularCoherenciaRR() {
-  if (intervalosRR.length < 4) {
-    const variabilidadCorta = THREE.MathUtils.clamp(rmssd / 45, 0, 1);
-    return variabilidadCorta;
-  }
+  if (intervalosRR.length < 6) return 0.5;
 
   const tiempos = [0];
   for (let indice = 1; indice < intervalosRR.length; indice++) {
@@ -128,13 +125,13 @@ function calcularCoherenciaRR() {
 
   const media = intervalosRR.reduce((suma, intervalo) => suma + intervalo, 0) / intervalosRR.length;
   const centrados = intervalosRR.map((intervalo) => intervalo - media);
-  const energia = centrados.reduce((suma, valor) => suma + valor * valor, 0);
-  if (energia < 1) return 0;
+  const energiaTotal = centrados.reduce((suma, valor) => suma + valor * valor, 0);
+  if (energiaTotal < 1) return 0.5;
 
   let mejorFrecuencia = 0.04;
   let mejorAjuste = 0;
-  for (let paso = 0; paso <= 24; paso++) {
-    const frecuencia = 0.04 + paso * 0.0025;
+  for (let paso = 0; paso <= 44; paso++) {
+    const frecuencia = 0.04 + paso * 0.005;
     let seno = 0;
     let coseno = 0;
     for (let indice = 0; indice < centrados.length; indice++) {
@@ -142,34 +139,20 @@ function calcularCoherenciaRR() {
       seno += centrados[indice] * Math.sin(fase);
       coseno += centrados[indice] * Math.cos(fase);
     }
-    const ajuste = (seno * seno + coseno * coseno) * 2 / (centrados.length * energia);
-    if (ajuste > mejorAjuste) {
-      mejorAjuste = ajuste;
+    const potenciaPico = (seno * seno + coseno * coseno) * 2 / (centrados.length * energiaTotal);
+    if (potenciaPico > mejorAjuste) {
+      mejorAjuste = potenciaPico;
       mejorFrecuencia = frecuencia;
     }
   }
 
-  const desviacion = Math.sqrt(energia / intervalosRR.length);
-  const dispersionNormalizada = THREE.MathUtils.clamp(desviacion / 55, 0, 1);
-  let dispersionDiferencias = 0;
-  for (let indice = 1; indice < centrados.length; indice++) {
-    dispersionDiferencias += Math.abs(centrados[indice] - centrados[indice - 1]);
-  }
-  const regularidad = 1 - THREE.MathUtils.clamp(
-    dispersionDiferencias / (centrados.length * 55),
-    0,
-    1
-  );
-  const bandaResonante = mejorFrecuencia >= 0.04 && mejorFrecuencia <= 0.10 ? 1 : 0;
-  const variabilidadNormalizada = THREE.MathUtils.clamp(rmssd / 45, 0, 1);
+  const potenciaRuido = Math.max(1 - mejorAjuste, 0.05);
+  const coherenceRatio = mejorAjuste / potenciaRuido;
+  const coherenceScore = Math.log(coherenceRatio + 1);
 
   frecuenciaCoherente = mejorFrecuencia;
-  dispersionRR = desviacion;
-  return THREE.MathUtils.clamp(
-    variabilidadNormalizada * 0.8 + mejorAjuste * 0.1 + bandaResonante * 0.1,
-    0,
-    1
-  );
+  dispersionRR = Math.sqrt(energiaTotal / intervalosRR.length);
+  return THREE.MathUtils.clamp(coherenceScore, 0.2, 5.0);
 }
 
 function actualizarTendenciaBiometrica() {
@@ -195,19 +178,20 @@ function registrarIntervaloRR(intervalo) {
 }
 
 function obtenerZonaCoherencia(valor) {
-  if (valor > 0.7) return "alta";
-  if (valor >= 0.4) return "media";
+  if (valor >= 2.0) return "alta";
+  if (valor >= 1.0) return "media";
   return "baja";
 }
 
 function actualizarVisualizacionHRV() {
-  const zona = obtenerZonaCoherencia(factorSomatico);
+  const cs = factorSomatico;
+  const zona = cs >= 2.0 ? "alta" : cs >= 1.0 ? "media" : "baja";
   const etiquetas = { baja: "Baja coherencia", media: "Coherencia media", alta: "Alta coherencia" };
   const indicador = document.querySelector("#coherence-zone");
   indicador.className = `zone-dot ${zona}`;
   document.querySelector("#coherence-label").textContent = etiquetas[zona];
-  document.querySelector("#coherence-score").textContent = `${(factorSomatico * 10).toFixed(1)} / 10`;
-  document.querySelector("#metric-coherence").textContent = (factorSomatico * 10).toFixed(1);
+  document.querySelector("#coherence-score").textContent = `${cs.toFixed(1)} CS`;
+  document.querySelector("#metric-coherence").textContent = cs.toFixed(1);
   document.querySelector("#metric-bpm").textContent = bpm || "--";
   document.querySelector("#metric-rr").textContent = Math.round(mediaRRVisual);
   document.querySelector("#metric-rmssd").textContent = rmssd.toFixed(1);
@@ -249,7 +233,7 @@ function dibujarTacograma() {
 }
 
 function mapearColorSomatico(factor, destino) {
-  const valor = THREE.MathUtils.clamp(factor, 0, 1);
+  const valor = THREE.MathUtils.clamp((factor - 0.2) / 1.8, 0, 1);
   for (let indice = 0; indice < paradasCromaticas.length - 1; indice++) {
     const actual = paradasCromaticas[indice];
     const siguiente = paradasCromaticas[indice + 1];
@@ -360,6 +344,7 @@ function actualizarCampoAnimado() {
     const minutos = Math.floor(tiempoRestante / 60);
     const segundos = Math.floor(tiempoRestante % 60);
     timerDisplay.textContent = `${minutos}:${segundos.toString().padStart(2, '0')}`;
+    actualizarHUD(tiempoRestante, tiempoTranscurrido);
     
     // Cambiar color del timer en los últimos 10 segundos
     if (tiempoRestante <= 10 && tiempoRestante > 0) {
@@ -372,47 +357,81 @@ function actualizarCampoAnimado() {
     if (tiempoTranscurrido >= tiempoFaseDuracion) {
       terminarFase();
     }
+    if (faseActual === estadoFases.ENTRENAMIENTO) actualizarLogros(tiempo, tiempoTranscurrido);
+  } else {
+    document.querySelector("#session-hud")?.classList.add("hidden");
   }
   
   actualizarAnillo(tiempo);
   actualizarLecturaBiometrica();
 }
 
-// Mostrar historial completo en consola y actualizar UI
+function actualizarHUD(tiempoRestante, tiempoTranscurrido) {
+  const hud = document.querySelector("#session-hud");
+  if (!hud) return;
+  hud.classList.remove("hidden");
+  const minutos = Math.floor(tiempoRestante / 60);
+  const segundos = Math.floor(tiempoRestante % 60);
+  document.querySelector("#hud-timer").textContent = `${minutos.toString().padStart(2, "0")}:${segundos.toString().padStart(2, "0")}`;
+  document.querySelector("#hud-guide").textContent = faseActual === estadoFases.EVALUACION
+    ? "Respira naturalmente"
+    : ((tiempoTranscurrido % PACER_CICLO_TOTAL) < PACER_INHALACION ? "Inhala (4s)" : "Exhala (6s)");
+}
+
+function actualizarLogros(tiempo, tiempoTranscurrido) {
+  const delta = Math.min(Math.max(tiempo - ultimoTiempoSesion, 0), 0.5);
+  acumuladoCS += factorSomatico * delta;
+  tiempoCS += delta;
+  ultimoTiempoSesion = tiempo;
+  const bloqueActual = Math.floor(tiempoTranscurrido / 5);
+  while (ultimoBloqueLogro < bloqueActual) {
+    ultimoBloqueLogro += 1;
+    puntosLogro += factorSomatico >= 2.0 ? 2 : factorSomatico >= 1.0 ? 1 : 0;
+  }
+}
+
+// Mostrar historial persistente con tendencia de CS y RMSSD.
 function mostrarHistorialCompleto() {
-  console.log("=".repeat(60));
-  console.log("HISTORIAL COMPLETO DE SESIONES HRV BIOFEEDBACK");
-  console.log("=".repeat(60));
-  
-  let resumenHTML = "<strong>Historial de Sesiones:</strong><br><br>";
-  
-  registroHistorial.forEach((registro, indice) => {
-    const fecha = new Date(registro.fecha).toLocaleString("es-ES");
-    console.log(`\nSesión ${indice + 1} - ${fecha}`);
-    console.log(`  RMSSD Basal: ${registro.rmssdBasal.toFixed(1)} ms`);
-    console.log(`  RMSSD Final: ${registro.rmssdFinal.toFixed(1)} ms`);
-    console.log(`  Cambio: ${registro.cambio > 0 ? '+' : ''}${registro.cambio.toFixed(1)} ms (${registro.porcentajeMejora}%)`);
-    console.log(`  Coherencia: ${registro.coherencia}`);
-    
-    resumenHTML += `
-      <strong>Sesión ${indice + 1}</strong> - ${fecha}<br>
-      Basal: ${registro.rmssdBasal.toFixed(1)} ms → Final: ${registro.rmssdFinal.toFixed(1)} ms<br>
-      Cambio: ${registro.cambio > 0 ? '+' : ''}${registro.cambio.toFixed(1)} ms (${registro.porcentajeMejora}%)<br>
-      <br>
-    `;
+  const sesiones = registroHistorial.slice(-10);
+  document.querySelector("#history-summary").innerHTML = sesiones
+    .map((registro, indice) => `<span>Sesión ${indice + 1}: ${(registro.avgCS ?? registro.coherencia ?? 0).toFixed(1)} CS · ${registro.rmssdFinal.toFixed(1)} ms RMSSD</span>`)
+    .join("");
+  dibujarHistorial(sesiones);
+  document.querySelector("#history-dialog").showModal();
+}
+
+function dibujarHistorial(sesiones) {
+  const lienzo = document.querySelector("#history-chart");
+  const escala = window.devicePixelRatio || 1;
+  const ancho = lienzo.clientWidth || 520;
+  const alto = lienzo.clientHeight || 240;
+  lienzo.width = ancho * escala;
+  lienzo.height = alto * escala;
+  const contexto = lienzo.getContext("2d");
+  contexto.scale(escala, escala);
+  contexto.clearRect(0, 0, ancho, alto);
+  if (!sesiones.length) return;
+  const valores = [
+    sesiones.map((registro) => registro.avgCS ?? registro.coherencia ?? 0),
+    sesiones.map((registro) => registro.rmssdFinal || 0),
+  ];
+  const maximo = Math.max(...valores.flat(), 1);
+  ["#42d392", "#4c8dff"].forEach((color, serie) => {
+    contexto.strokeStyle = color;
+    contexto.lineWidth = 2;
+    contexto.beginPath();
+    valores[serie].forEach((valor, indice) => {
+      const x = sesiones.length === 1 ? ancho / 2 : 12 + (indice / (sesiones.length - 1)) * (ancho - 24);
+      const y = alto - 18 - (valor / maximo) * (alto - 36);
+      indice ? contexto.lineTo(x, y) : contexto.moveTo(x, y);
+    });
+    contexto.stroke();
   });
-  
-  console.log("\n" + "=".repeat(60));
-  
-  // Mostrar en overlay
-  const overlay = document.querySelector("#phase-overlay");
-  const titleEl = document.querySelector("#instruction-title");
-  const textEl = document.querySelector("#instruction-text");
-  const timerEl = document.querySelector("#timer-display");
-  
-  titleEl.textContent = "Historial de Sesiones";
-  textEl.innerHTML = resumenHTML;
-  timerEl.textContent = "📊";
+  contexto.font = "11px system-ui";
+  contexto.fillStyle = "#42d392";
+  contexto.fillText("CS", 12, 16);
+  contexto.fillStyle = "#4c8dff";
+  contexto.fillText("RMSSD", 42, 16);
 }
 
 function actualizarSimulacionAutomatica(tiempo) {
@@ -428,7 +447,7 @@ function actualizarSimulacionAutomatica(tiempo) {
   inputB = Math.round(THREE.MathUtils.lerp(inputB, intervaloSimulado, 0.015));
   mediaRRVisual = THREE.MathUtils.lerp(mediaRRVisual, intervaloSimulado, 0.08);
   bpm = Math.round(THREE.MathUtils.clamp(60000 / mediaRRVisual, 60, 140));
-  factorSomaticoObjetivo = relajacion;
+  factorSomaticoObjetivo = THREE.MathUtils.lerp(0.2, 2.8, relajacion);
   deltaRR = Math.abs(inputA - inputB);
   rmssd = deltaRR;
 }
@@ -472,6 +491,11 @@ let rmssdBasal = 0;
 let rmssdFinal = 0;
 let registroHistorial = [];
 let registroBasal = null;
+let puntosLogro = 0;
+let acumuladoCS = 0;
+let tiempoCS = 0;
+let ultimoTiempoSesion = 0;
+let ultimoBloqueLogro = 0;
 
 // Pacer respiratorio: 0.1 Hz = 10 segundos por ciclo (6 ciclos/min)
 // Inhalación: 4 segundos, Exhalación: 6 segundos
@@ -502,7 +526,7 @@ function guardarHistorial() {
 
 // Iniciar Fase 1: Evaluación Basal (60 segundos)
 function iniciarEvaluacionBasal() {
-  if (!caracteristicaFrecuenciaCardiaca) {
+  if (!caracteristicaFrecuenciaCardiaca && !camaraActiva) {
     console.warn("Sensor Bluetooth no conectado");
     return;
   }
@@ -524,7 +548,7 @@ function iniciarEvaluacionBasal() {
 
 // Iniciar Fase 2: Entrenamiento HRVB (3-5 minutos con pacer)
 function iniciarEntrenamiento() {
-  if (!caracteristicaFrecuenciaCardiaca || faseActual !== estadoFases.RESULTADOS_BASAL) {
+  if ((!caracteristicaFrecuenciaCardiaca && !camaraActiva) || faseActual !== estadoFases.RESULTADOS_BASAL) {
     console.warn("Sensor Bluetooth no conectado");
     return;
   }
@@ -536,6 +560,11 @@ function iniciarEntrenamiento() {
   tiempoZonas.baja = 0;
   tiempoZonas.media = 0;
   tiempoZonas.alta = 0;
+  puntosLogro = 0;
+  acumuladoCS = 0;
+  tiempoCS = 0;
+  ultimoTiempoSesion = reloj.getElapsedTime();
+  ultimoBloqueLogro = 0;
   
   actualizarInstrucciones(
     "Entrenamiento HRVB",
@@ -570,6 +599,7 @@ function terminarFase() {
     
     // Registrar en historial
     const totalZonas = Object.values(tiempoZonas).reduce((suma, valor) => suma + valor, 0) || 1;
+    const avgCS = tiempoCS > 0 ? acumuladoCS / tiempoCS : factorSomatico;
     const registro = {
       fecha: new Date().toISOString(),
       rmssdBasal: parseFloat(rmssdBasal.toFixed(1)),
@@ -577,6 +607,9 @@ function terminarFase() {
       cambio: parseFloat(cambioRMSSD.toFixed(1)),
       porcentajeMejora: parseFloat(porcentajeMejora),
       coherencia: parseFloat(factorSomatico.toFixed(2)),
+      avgCS: parseFloat(avgCS.toFixed(2)),
+      puntosLogro,
+      bpmFinal: bpm,
       zonas: Object.fromEntries(Object.entries(tiempoZonas).map(([zona, tiempo]) => [zona, Math.round((tiempo / totalZonas) * 100)])),
     };
     
@@ -599,34 +632,32 @@ function actualizarInstrucciones(titulo, texto, duracion) {
   textEl.textContent = texto;
   document.querySelector("#training-config").classList.add("hidden");
   
-  overlay.classList.remove("hidden");
+  if (faseActual === estadoFases.EVALUACION || faseActual === estadoFases.ENTRENAMIENTO) {
+    overlay.classList.add("hidden");
+  } else {
+    overlay.classList.remove("hidden");
+  }
 }
 
 // Mostrar resultados de la sesión
 function mostrarResultados(registro) {
-  const overlay = document.querySelector("#phase-overlay");
-  const titleEl = document.querySelector("#instruction-title");
-  const textEl = document.querySelector("#instruction-text");
-  const timerEl = document.querySelector("#timer-display");
-  
-  titleEl.textContent = "Sesión Completada ✓";
-  
-  const mejora = registro.cambio > 0 ? "MEJORÓ" : "DISMINUYÓ";
-  const color = registro.cambio > 0 ? "💚" : "💙";
-  
-  textEl.innerHTML = `
-    <strong>Resultados de Coherencia Cardiorrespiratoria:</strong><br><br>
-    RMSSD Basal: <strong>${registro.rmssdBasal.toFixed(1)}</strong> ms<br>
-    RMSSD Final: <strong>${registro.rmssdFinal.toFixed(1)}</strong> ms<br>
-    <br>
-    Cambio: <strong>${color} ${registro.cambio > 0 ? '+' : ''}${registro.cambio.toFixed(1)}</strong> ms<br>
-    Mejora: <strong>${registro.porcentajeMejora}%</strong><br>
-    <br>
-    Coherencia: <strong>${registro.coherencia}</strong>
-  `;
-  
-  timerEl.textContent = "✓";
-  timerEl.classList.add("complete");
+  const anterior = registroHistorial.at(-2);
+  const altaAnterior = anterior?.zonas?.alta || 0;
+  const diferenciaAlta = registro.zonas.alta - altaAnterior;
+  const comparativa = anterior
+    ? `Lograste un ${diferenciaAlta >= 0 ? "+" : ""}${diferenciaAlta}% de tiempo en coherencia alta frente a tu sesión anterior.`
+    : "Esta es tu primera sesión guardada; úsala como punto de referencia.";
+  const zonas = ["baja", "media", "alta"];
+  const colores = { baja: "#e45757", media: "#4c8dff", alta: "#42d392" };
+  document.querySelector("#results-content").innerHTML = `
+    <div class="report-highlight"><span>Coherencia promedio</span><strong>${registro.avgCS.toFixed(1)} CS</strong><span class="achievement">${registro.puntosLogro} pts de logro</span></div>
+    <p class="report-comparison">${comparativa}</p>
+    <h3>Tiempo en coherencia</h3>
+    <div class="zone-report">${zonas.map((zona) => `<div><span><i style="background:${colores[zona]}"></i>${zona}</span><strong>${registro.zonas[zona] || 0}%</strong></div>`).join("")}</div>
+    <h3>Resumen biométrico</h3>
+    <div class="biometric-report"><div><span>RMSSD final</span><strong>${registro.rmssdFinal.toFixed(1)} ms</strong></div><div><span>BPM final</span><strong>${registro.bpmFinal || "--"}</strong></div></div>`;
+  document.querySelector("#session-hud")?.classList.add("hidden");
+  document.querySelector("#results-dialog").showModal();
 }
 
 function mostrarResultadosBasales(registro) {
@@ -666,9 +697,9 @@ function actualizarBotonesPhase() {
   if (faseActual === estadoFases.ESPERA) {
     phaseInfo.textContent = estaConectado ? "Listo para iniciar sesión" : "Conecta el sensor para comenzar";
   } else if (faseActual === estadoFases.EVALUACION) {
-    phaseInfo.textContent = `RMSSD Actual: ${rmssd.toFixed(1)} ms\nCoherencia: ${factorSomatico.toFixed(2)}`;
+    phaseInfo.textContent = `RMSSD Actual: ${rmssd.toFixed(1)} ms\nPuntaje de Coherencia: ${factorSomatico.toFixed(2)} CS`;
   } else if (faseActual === estadoFases.ENTRENAMIENTO) {
-    phaseInfo.textContent = `Basal: ${rmssdBasal.toFixed(1)} ms\nActual: ${rmssd.toFixed(1)} ms\nCoherencia: ${factorSomatico.toFixed(2)}`;
+    phaseInfo.textContent = `Basal: ${rmssdBasal.toFixed(1)} ms\nActual: ${rmssd.toFixed(1)} ms\nPuntaje de Coherencia: ${factorSomatico.toFixed(2)} CS`;
   } else if (faseActual === estadoFases.RESULTADOS_BASAL) {
     phaseInfo.textContent = `Resultados basales · RMSSD: ${rmssdBasal.toFixed(1)} ms · Elige la duración del entrenamiento`;
   }
@@ -734,17 +765,27 @@ async function iniciarCamaraPPG() {
   }
   try {
     actualizarEstadoBluetooth("Solicitando acceso a la cámara...");
-    flujoCamara = await navigator.mediaDevices.getUserMedia({
+    const configuracionCamara = {
       video: { facingMode: { ideal: "environment" }, width: { ideal: 640 }, height: { ideal: 480 } },
       audio: false,
-    });
+    };
+    try {
+      flujoCamara = await navigator.mediaDevices.getUserMedia(configuracionCamara);
+    } catch (error) {
+      if (error.name !== "OverconstrainedError" && error.name !== "NotFoundError") throw error;
+      flujoCamara = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
     videoCamara = document.querySelector("#camera-preview");
     videoCamara.srcObject = flujoCamara;
     videoCamara.classList.add("active");
     await videoCamara.play();
     const pista = flujoCamara.getVideoTracks()[0];
     if (pista.getCapabilities?.().torch) {
-      await pista.applyConstraints({ advanced: [{ torch: true }] });
+      try {
+        await pista.applyConstraints({ advanced: [{ torch: true }] });
+      } catch (error) {
+        console.info("El flash no está disponible; continúa sin flash.", error);
+      }
     }
     cuadroCamara = document.createElement("canvas");
     cuadroCamara.width = 32;
@@ -852,8 +893,12 @@ function decodificarMedicionFrecuenciaCardiaca(event) {
 }
 
 async function conectarSensorCardiaco() {
-  if (!navigator.bluetooth) {
-    actualizarEstadoBluetooth("Bluetooth no disponible en este navegador");
+  if (!window.isSecureContext) {
+    actualizarEstadoBluetooth("Bluetooth requiere HTTPS o localhost");
+    return;
+  }
+  if (!navigator.bluetooth?.requestDevice) {
+    actualizarEstadoBluetooth("Usa Chrome o Edge para conectar Bluetooth");
     return;
   }
 
@@ -885,7 +930,13 @@ async function conectarSensorCardiaco() {
     actualizarLecturaBiometrica();
   } catch (error) {
     caracteristicaFrecuenciaCardiaca = null;
-    const mensajeError = error.name === "NotFoundError" ? "Desconectado" : "Error de conexión";
+    const mensajes = {
+      NotFoundError: "No se seleccionó ningún sensor",
+      SecurityError: "Bluetooth bloqueado por permisos del navegador",
+      NotSupportedError: "Este navegador no admite Web Bluetooth",
+      InvalidStateError: "Activa Bluetooth en el computador",
+    };
+    const mensajeError = mensajes[error.name] || "No se pudo conectar al sensor";
     actualizarEstadoBluetooth(mensajeError, false);
     actualizarLecturaBiometrica();
   }
@@ -914,6 +965,7 @@ document.querySelectorAll("[data-info]").forEach((boton) => boton.addEventListen
   dialogoInfo.showModal();
 }));
 document.querySelector(".dialog-close").addEventListener("click", () => dialogoInfo.close());
+document.querySelectorAll(".report-dialog .dialog-close").forEach((boton) => boton.addEventListener("click", () => boton.closest("dialog").close()));
 
 // Inicializar
 cargarHistorial();

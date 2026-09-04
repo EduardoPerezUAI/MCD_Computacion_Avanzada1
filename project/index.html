@@ -35,7 +35,12 @@
         </div>
       </div>
 
-      <div class="visual-readout"><span id="coherence-zone" class="zone-dot low"></span><strong id="coherence-label">Baja coherencia</strong><span id="coherence-score">0.0 / 10</span></div>
+      <div id="session-hud" class="session-hud hidden" aria-live="polite">
+        <strong id="hud-timer">00:00</strong>
+        <span id="hud-guide">Respira naturalmente</span>
+      </div>
+
+      <div class="visual-readout"><span id="coherence-zone" class="zone-dot low"></span><strong id="coherence-label">Baja coherencia</strong><span id="coherence-score">0.5 CS</span></div>
       <section class="tacogram-panel" aria-label="Tacograma en tiempo real">
         <div class="section-heading"><h2>Tacograma RR</h2><span>últimos 50 intervalos</span></div>
         <canvas id="tacogram" aria-label="Gráfico de intervalos RR"></canvas>
@@ -87,7 +92,7 @@
 
       <section class="metrics-section" aria-label="Métricas de coherencia">
         <div class="section-heading"><h3>Lectura en tiempo real</h3><button class="info-button" data-info="coherencia">i</button></div>
-        <div class="hero-metric"><span>Puntaje de coherencia</span><strong id="metric-coherence">0.0</strong><small>/ 10</small></div>
+        <div class="hero-metric"><span>Puntaje de coherencia</span><strong id="metric-coherence">0.5</strong><small>CS</small></div>
         <div class="metric-grid">
           <div><span>BPM</span><strong id="metric-bpm">--</strong></div>
           <div><span>Intervalo RR <button class="info-button" data-info="rr">i</button></span><strong id="metric-rr">--</strong><small>ms</small></div>
@@ -118,6 +123,8 @@
   </main>
 
   <dialog id="info-dialog" class="info-dialog"><button class="dialog-close" aria-label="Cerrar">×</button><p class="eyebrow">APRENDER</p><h2 id="info-title"></h2><p id="info-text"></p></dialog>
+  <dialog id="results-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar resultados">×</button><p class="eyebrow">REPORTE DE SESIÓN</p><h2>Tu sesión de coherencia</h2><div id="results-content"></div></dialog>
+  <dialog id="history-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar historial">×</button><p class="eyebrow">PROGRESO</p><h2>Últimas sesiones</h2><canvas id="history-chart" aria-label="Evolución de coherencia y RMSSD"></canvas><div id="history-summary"></div></dialog>
 
   <script type="importmap">
     {
