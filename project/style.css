@@ -491,17 +491,15 @@ h1 { font-size: clamp(34px, 4.5vw, 62px); letter-spacing: 0; }
 .controls-panel { background: rgba(16, 21, 27, .94); gap: 18px; max-height: 100vh; overflow-y: auto; }
 .btn-primary, .btn-phase { font-family: -apple-system, BlinkMacSystemFont, sans-serif; border-radius: 3px; }
 .btn-primary { background: var(--accent); border-color: var(--accent); }
-.visual-readout { position: absolute; z-index: 10; left: 48px; bottom: 190px; display: flex; align-items: center; gap: 10px; font: 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+.visual-readout { position: absolute; z-index: 10; left: 48px; bottom: 148px; display: flex; align-items: center; gap: 10px; font: 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+.tacogram-strip { position: absolute; z-index: 8; left: 0; right: 0; bottom: 0; width: 100%; height: 130px; pointer-events: none; }
 .visual-readout strong { font-weight: 600; }
 .visual-readout > span:last-child { color: var(--text-faint); }
 .zone-dot, .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
 .zone-dot.low, .swatch.low { background: var(--red); }.zone-dot.medium, .swatch.medium { background: var(--blue); }.zone-dot.high, .swatch.high { background: var(--accent); }
-.tacogram-panel { position: absolute; z-index: 10; left: 48px; right: 42px; bottom: 30px; padding: 14px 16px 10px; border: 1px solid rgba(113, 129, 127, .3); background: rgba(8, 11, 16, .72); backdrop-filter: blur(8px); }
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .section-heading h2, .section-heading h3 { margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
 .section-heading > span { color: var(--text-faint); font: 10px -apple-system, BlinkMacSystemFont, sans-serif; }
-#tacogram { display: block; width: 100%; height: 112px; margin-top: 10px; }
-.tacogram-scale { display: flex; justify-content: space-between; color: var(--text-faint); font: 10px -apple-system, BlinkMacSystemFont, sans-serif; }
 .metrics-section { padding: 18px 0; border-bottom: 1px solid var(--line); }
 .hero-metric { margin: 16px 0; display: flex; align-items: baseline; gap: 7px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
 .hero-metric span { color: var(--text-soft); font-size: 11px; margin-right: auto; }.hero-metric strong { font-size: 34px; font-weight: 400; color: var(--accent); }.hero-metric small, .metric-grid small { color: var(--text-faint); font-size: 10px; }
@@ -513,7 +511,7 @@ h1 { font-size: clamp(34px, 4.5vw, 62px); letter-spacing: 0; }
 .zone-title { margin: 20px 0 0; color: var(--text-faint); font: 10px -apple-system, BlinkMacSystemFont, sans-serif; text-transform: uppercase; letter-spacing: .08em; }
 .info-dialog { width: min(360px, calc(100% - 32px)); padding: 28px; border: 1px solid var(--line); background: #111a20; color: var(--text); box-shadow: 0 18px 60px #000b; }.info-dialog::backdrop { background: #0009; }.info-dialog h2 { margin: 8px 0 10px; font-size: 24px; font-weight: 400; }.info-dialog p:last-child { color: var(--text-soft); line-height: 1.6; font: 14px/1.6 -apple-system, BlinkMacSystemFont, sans-serif; }.dialog-close { float: right; border: 0; background: transparent; color: var(--text-soft); font-size: 24px; cursor: pointer; }
 .training-config { margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(113, 129, 127, .35); text-align: left; font: 12px -apple-system, BlinkMacSystemFont, sans-serif; }.training-config.hidden { display: none; }.training-config label { display: flex; justify-content: space-between; gap: 12px; color: var(--text-soft); }.training-config label strong { color: var(--accent); font-weight: 600; }.training-config input { width: 100%; margin: 14px 0; accent-color: var(--accent); }.training-config button { width: 100%; margin-top: 0; text-transform: none; }
-@media (max-width: 900px) { .project-header { left: 24px; top: 24px; }.visual-readout { left: 24px; bottom: 170px; }.tacogram-panel { left: 16px; right: 16px; bottom: 18px; }.viewport-shell { min-height: 64vh; } }
+@media (max-width: 900px) { .project-header { left: 24px; top: 24px; }.visual-readout { left: 24px; bottom: 104px; }.tacogram-strip { height: 90px; }.viewport-shell { min-height: 64vh; } }
 .session-hud { position: absolute; z-index: 25; top: 1rem; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 14px; padding: 9px 15px; border: 1px solid rgba(66,211,146,.35); background: rgba(8,11,16,.58); backdrop-filter: blur(8px); color: var(--text); font: 12px -apple-system, BlinkMacSystemFont, sans-serif; white-space: nowrap; }.session-hud.hidden { display: none; }.session-hud strong { color: var(--accent); font: 600 18px Georgia, serif; }.session-hud span { color: var(--text-soft); }
 .report-dialog { width: min(520px, calc(100% - 32px)); max-height: min(760px, calc(100vh - 32px)); overflow-y: auto; padding: 30px; border: 1px solid var(--line); background: #111a20; color: var(--text); box-shadow: 0 18px 70px #000b; }.report-dialog::backdrop { background: #000b; }.report-dialog h2 { margin: 8px 0 24px; font-size: 28px; font-weight: 400; }.report-dialog h3 { margin: 24px 0 12px; color: var(--text-faint); font: 10px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: .12em; text-transform: uppercase; }.report-dialog #history-chart { width: 100%; height: 240px; display: block; background: rgba(0,0,0,.16); border: 1px solid var(--line); }.report-dialog #history-summary { margin-top: 4px; }
 
@@ -545,5 +543,33 @@ h1 { font-size: clamp(34px, 4.5vw, 62px); letter-spacing: 0; }
 .history-legend { display: flex; gap: 16px; margin-top: 8px; color: var(--text-soft); font: 11px -apple-system, BlinkMacSystemFont, sans-serif; }
 .history-legend span { display: flex; align-items: center; gap: 6px; }
 .history-legend i { width: 9px; height: 9px; border-radius: 50%; }
-.history-sessions { display: grid; gap: 6px; margin-top: 14px; color: var(--text-soft); font: 11px -apple-system, BlinkMacSystemFont, sans-serif; }
-.history-sessions span { padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.history-sessions { display: grid; gap: 6px; margin-top: 14px; }
+.history-session-btn { display: block; width: 100%; padding: 8px 4px; border: none; border-bottom: 1px solid var(--line); background: transparent; color: var(--text-soft); text-align: left; font: 11px -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; }
+.history-session-btn:hover { color: var(--accent); }
+
+/* Apariencia del orbe */
+.appearance-section { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.appearance-section h3 { margin-bottom: 14px; color: var(--text-faint); font: 600 11px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: .16em; text-transform: uppercase; }
+.appearance-section label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; color: var(--text-soft); font: 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+.appearance-section output { color: var(--accent); font-weight: 600; }
+.appearance-section input[type="range"] { width: 100%; margin: 0 0 16px; accent-color: var(--accent); }
+.appearance-section input[type="range"]:last-child { margin-bottom: 0; }
+
+/* Análisis avanzado (Poincaré + PSD, Chart.js) */
+.analysis-section { padding: 18px 0; border-bottom: 1px solid var(--line); }
+.chart-block { margin-top: 16px; }
+.chart-block:first-of-type { margin-top: 14px; }
+.chart-label { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; color: var(--text-soft); font: 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+.chart-label span { color: var(--text-faint); font-size: 10px; }
+.chart-wrap { position: relative; width: 100%; height: 150px; }
+
+/* Entrenamiento infinito */
+.infinite-toggle { display: flex !important; align-items: center; gap: 8px; margin-top: 6px; color: var(--text-soft); font: 12px -apple-system, BlinkMacSystemFont, sans-serif; cursor: pointer; }
+.training-config .infinite-toggle input { width: auto; margin: 0; accent-color: var(--accent); }
+#training-duration-row.disabled, #training-duration:disabled { opacity: .35; }
+#training-duration:disabled { pointer-events: none; }
+
+/* Botón de detener entrenamiento (HUD) */
+.hud-stop { padding: 5px 12px; border: 1px solid rgba(228,87,87,.5); background: rgba(228,87,87,.12); color: #ff9a9a; font: 600 10px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: .04em; text-transform: uppercase; border-radius: 3px; cursor: pointer; }
+.hud-stop:hover { background: rgba(228,87,87,.24); }
+.hud-stop.hidden { display: none; }

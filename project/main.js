@@ -7,7 +7,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const valoresIniciales = {
   densidad: 2600,
-  tamaño: 0.05,
+  tamaño: 0.4,
   dispersión: 0.8,
   amplitud: 3.0,
   frecuencia: 80,
@@ -34,6 +34,7 @@ let frecuenciaLatido = 1000 / mediaRRVisual;
 let frecuenciaCoherente = 0;
 let dispersionRR = 0;
 let pulsoRadial = 0;
+let espectroRR = []; // periodograma {frecuencia, potencia} calculado en calcularCoherenciaRR()
 
 // ======================================================
 // 02 — ESCENA: ORBE RESPIRATORIO
@@ -51,7 +52,7 @@ const camara = new THREE.PerspectiveCamera(
   200
 );
 
-camara.position.set(0, 0, 18);
+camara.position.set(0, 0, 13);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -66,8 +67,8 @@ const controlesOrbita = new OrbitControls(camara, renderer.domElement);
 controlesOrbita.enableDamping = true;
 controlesOrbita.enableRotate = true;
 controlesOrbita.dampingFactor = 0.08;
-controlesOrbita.minDistance = 7;
-controlesOrbita.maxDistance = 32;
+controlesOrbita.minDistance = 6;
+controlesOrbita.maxDistance = 30;
 controlesOrbita.target.set(0, 0, 0);
 
 const luzAmbiente = new THREE.AmbientLight(0x243142, 1.2);
@@ -100,6 +101,7 @@ const colorTemporal = new THREE.Color();
 const colorSomatico = new THREE.Color("#660000");
 let anillo = null;
 let esferaExterior = null;
+let brilloParticulas = 1.0;
 
 // Suavizado orgánico del orbe (independiente del framerate).
 let factorPacerSuavizado = 0.18;
@@ -134,8 +136,15 @@ function calcularCoherenciaRR() {
   const energiaTotal = centrados.reduce((suma, valor) => suma + valor * valor, 0);
   if (energiaTotal < 1) return 0.5;
 
+  // Periodograma tipo Lomb-Scargle simplificado: para cada frecuencia candidata
+  // se proyecta la serie RR centrada sobre una onda seno/coseno de esa
+  // frecuencia — la proyección más fuerte es la frecuencia dominante. Es un
+  // FFT/Welch simplificado válido para series de RR cortas y no uniformemente
+  // muestreadas (los latidos no llegan a intervalos fijos). Se conserva el
+  // espectro completo en `espectroRR` para el gráfico PSD.
   let mejorFrecuencia = 0.04;
   let mejorAjuste = 0;
+  espectroRR = [];
   for (let paso = 0; paso <= 44; paso++) {
     const frecuencia = 0.04 + paso * 0.005;
     let seno = 0;
@@ -146,6 +155,7 @@ function calcularCoherenciaRR() {
       coseno += centrados[indice] * Math.cos(fase);
     }
     const potenciaPico = (seno * seno + coseno * coseno) * 2 / (centrados.length * energiaTotal);
+    espectroRR.push({ frecuencia, potencia: potenciaPico });
     if (potenciaPico > mejorAjuste) {
       mejorAjuste = potenciaPico;
       mejorFrecuencia = frecuencia;
@@ -180,6 +190,7 @@ function registrarIntervaloRR(intervalo) {
   }
   if (intervalosRR.length > VENTANA_RR) intervalosRR.shift();
   actualizarTendenciaBiometrica();
+  actualizarPoincare(intervaloSeguro);
   actualizarLecturaBiometrica();
 }
 
@@ -211,31 +222,210 @@ function actualizarVisualizacionHRV() {
   dibujarTacograma();
 }
 
+// Tacograma: una línea 2D que atraviesa todo el ancho del visor, coloreada
+// según el estado de coherencia actual (mismo color que el orbe). El rango
+// vertical usa MIN_RR–MAX_RR fijos para que la línea no salte de escala
+// entre latidos.
 function dibujarTacograma() {
   const lienzo = document.querySelector("#tacogram");
   if (!lienzo) return;
   const escala = window.devicePixelRatio || 1;
-  const ancho = lienzo.clientWidth || 420;
-  const alto = lienzo.clientHeight || 150;
+  const ancho = lienzo.clientWidth || 800;
+  const alto = lienzo.clientHeight || 120;
   lienzo.width = ancho * escala;
   lienzo.height = alto * escala;
   const contexto = lienzo.getContext("2d");
   contexto.scale(escala, escala);
   contexto.clearRect(0, 0, ancho, alto);
+
   const valores = historialTacograma;
   if (valores.length < 2) return;
-  const minimo = Math.min(...valores) - 20;
-  const maximo = Math.max(...valores) + 20;
-  contexto.strokeStyle = "#42d392";
-  contexto.lineWidth = 2;
+
+  const colorLinea = `#${colorSomatico.getHexString()}`;
+  contexto.strokeStyle = colorLinea;
+  contexto.lineWidth = 2.5;
+  contexto.shadowColor = colorLinea;
+  contexto.shadowBlur = 8;
   contexto.beginPath();
   valores.forEach((valor, indice) => {
     const x = (indice / (valores.length - 1)) * ancho;
-    const y = alto - ((valor - minimo) / Math.max(maximo - minimo, 1)) * (alto - 12) - 6;
+    const normalizado = THREE.MathUtils.clamp((valor - MIN_RR) / (MAX_RR - MIN_RR), 0, 1);
+    const y = alto - normalizado * (alto - 16) - 8;
     if (indice === 0) contexto.moveTo(x, y); else contexto.lineTo(x, y);
   });
   contexto.stroke();
-  document.querySelector("#rr-range").textContent = `${Math.round(minimo + 20)}–${Math.round(maximo - 20)} ms`;
+  contexto.shadowBlur = 0;
+}
+
+// ======================================================
+// 04b — GRÁFICOS CLÍNICOS (CHART.JS): POINCARÉ Y PSD
+// ======================================================
+// Chart.js se inyecta vía CDN como <script> clásico antes de este módulo
+// (ver index.html), así que queda disponible como global `Chart`. Si por
+// cualquier motivo no cargó (CDN caído, sin red), todas las funciones de
+// esta sección se degradan a no-ops — nunca deben tirar abajo Three.js ni
+// el resto de la app.
+
+const MAX_PUNTOS_POINCARE = 50;
+let puntosPoincare = [];
+let rrAnteriorPoincare = null;
+let graficoPoincare = null;
+let graficoEspectro = null;
+let tiempoUltimaActualizacionEspectro = 0;
+
+// Plugin ligero e inline (sin dependencias extra) que dibuja una línea de
+// referencia punteada en 0.1 Hz — la frecuencia de resonancia del pacer.
+const pluginLineaResonancia = {
+  id: "lineaResonancia",
+  afterDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea) return;
+    const x = scales.x.getPixelForValue(0.1);
+    if (x < chartArea.left || x > chartArea.right) return;
+    ctx.save();
+    ctx.strokeStyle = "rgba(217,210,195,0.5)";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x, chartArea.top);
+    ctx.lineTo(x, chartArea.bottom);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(217,210,195,0.85)";
+    ctx.font = "10px -apple-system, BlinkMacSystemFont, sans-serif";
+    ctx.fillText("0.1 Hz", x + 4, chartArea.top + 10);
+    ctx.restore();
+  },
+};
+
+function crearGraficoPoincare() {
+  const lienzo = document.querySelector("#chart-poincare");
+  if (!lienzo || typeof Chart === "undefined") return null;
+  return new Chart(lienzo, {
+    type: "scatter",
+    data: {
+      datasets: [{
+        label: "RRₙ₊₁ vs RRₙ",
+        data: [],
+        pointBackgroundColor: "#42d392",
+        pointBorderColor: "rgba(66,211,146,0.35)",
+        pointBorderWidth: 4,
+        pointRadius: 3.5,
+        pointHoverRadius: 5,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: {
+          type: "linear",
+          title: { display: true, text: "RRₙ (ms)", color: "#aab9b7", font: { size: 10 } },
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#71817f", font: { size: 9 } },
+        },
+        y: {
+          type: "linear",
+          title: { display: true, text: "RRₙ₊₁ (ms)", color: "#aab9b7", font: { size: 10 } },
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#71817f", font: { size: 9 } },
+        },
+      },
+      plugins: { legend: { display: false } },
+    },
+  });
+}
+
+function crearGraficoEspectro() {
+  const lienzo = document.querySelector("#chart-psd");
+  if (!lienzo || typeof Chart === "undefined") return null;
+  return new Chart(lienzo, {
+    type: "line",
+    data: {
+      datasets: [{
+        label: "Densidad espectral (PSD)",
+        data: [],
+        borderColor: "#4c8dff",
+        backgroundColor: "rgba(76,141,255,0.18)",
+        fill: true,
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        x: {
+          type: "linear",
+          min: 0.03,
+          max: 0.28,
+          title: { display: true, text: "Frecuencia (Hz)", color: "#aab9b7", font: { size: 10 } },
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#71817f", font: { size: 9 }, stepSize: 0.05 },
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: "Potencia", color: "#aab9b7", font: { size: 10 } },
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: { color: "#71817f", font: { size: 9 } },
+        },
+      },
+      plugins: { legend: { display: false } },
+    },
+    plugins: [pluginLineaResonancia],
+  });
+}
+
+// Diagrama de Poincaré: cada latido filtrado añade el punto (RRₙ, RRₙ₊₁).
+// Mantiene sólo los últimos 50 puntos — con buena coherencia la nube se
+// alarga en una elipse angosta a lo largo de la diagonal; con baja
+// coherencia se dispersa en una nube redonda y caótica.
+function actualizarPoincare(nuevoRR) {
+  if (rrAnteriorPoincare !== null) {
+    puntosPoincare.push({ x: rrAnteriorPoincare, y: nuevoRR });
+    if (puntosPoincare.length > MAX_PUNTOS_POINCARE) puntosPoincare.shift();
+    if (graficoPoincare) {
+      graficoPoincare.data.datasets[0].data = puntosPoincare;
+      graficoPoincare.update("none");
+    }
+  }
+  rrAnteriorPoincare = nuevoRR;
+}
+
+// Espectro simulado para cuando no hay sensor real conectado: un piso de
+// ruido que se aplana y un pico gaussiano en 0.1 Hz que se vuelve angosto y
+// alto a medida que la coherencia simulada aumenta — mismo lenguaje visual
+// que tendría un entrenamiento real, para fines de demostración.
+function generarEspectroSimulado(coherenciaNormalizada) {
+  const anchoPico = THREE.MathUtils.lerp(0.05, 0.008, coherenciaNormalizada);
+  const alturaPico = THREE.MathUtils.lerp(0.05, 1.0, Math.pow(coherenciaNormalizada, 1.5));
+  const puntos = [];
+  for (let frecuencia = 0.03; frecuencia <= 0.28; frecuencia += 0.005) {
+    const ruido = (0.08 + Math.random() * 0.1) * (1 - coherenciaNormalizada * 0.7);
+    const distancia = frecuencia - 0.1;
+    const pico = alturaPico * Math.exp(-(distancia * distancia) / (2 * anchoPico * anchoPico));
+    puntos.push({ x: frecuencia, y: ruido + pico });
+  }
+  return puntos;
+}
+
+// Actualiza el gráfico PSD: usa el periodograma real (espectroRR) cuando hay
+// un sensor conectado y suficientes latidos para calcularlo; si no, recurre
+// a la simulación. Una sesión de alta coherencia (RMSSD alto y estable) ya
+// produce naturalmente un pico real más alto y angosto en 0.1 Hz — no hace
+// falta forzarlo aparte.
+function actualizarGraficoEspectro() {
+  if (!graficoEspectro) return;
+  const coherenciaNormalizada = normalizarCoherencia(factorSomatico);
+  const haySensorReal = Boolean(caracteristicaFrecuenciaCardiaca || camaraActiva);
+  const puntos = haySensorReal && intervalosRR.length >= 6 && espectroRR.length
+    ? espectroRR.map((punto) => ({ x: punto.frecuencia, y: punto.potencia }))
+    : generarEspectroSimulado(coherenciaNormalizada);
+  graficoEspectro.data.datasets[0].data = puntos;
+  graficoEspectro.update("none");
 }
 
 // Normaliza el puntaje de coherencia (0.2 – 5.0) a un rango 0-1.
@@ -392,7 +582,7 @@ function actualizarParticulasCampo(tiempo, escalaFinal) {
     posiciones[indice3 + 1] = direcciones[indice3 + 1] * radio;
     posiciones[indice3 + 2] = direcciones[indice3 + 2] * radio;
 
-    const brillo = brillos[indice] * THREE.MathUtils.lerp(0.75, 1.25, coherenciaNormalizada);
+    const brillo = brillos[indice] * THREE.MathUtils.lerp(0.75, 1.25, coherenciaNormalizada) * brilloParticulas;
     colores[indice3] = colorSomatico.r * brillo;
     colores[indice3 + 1] = colorSomatico.g * brillo;
     colores[indice3 + 2] = colorSomatico.b * brillo;
@@ -461,30 +651,48 @@ function actualizarCampoAnimado() {
   const frecuenciaObjetivo = 1000 / Math.max(mediaRRVisual, 1);
   frecuenciaLatido = THREE.MathUtils.damp(frecuenciaLatido, frecuenciaObjetivo, 0.6, delta);
 
+  // El gráfico PSD se refresca unas pocas veces por segundo (no cada frame):
+  // en modo sensor real ya se recalcula por latido vía calcularCoherenciaRR(),
+  // y en modo simulado esto le da vida sin redibujar el chart 60 veces/seg.
+  if (tiempo - tiempoUltimaActualizacionEspectro > 0.35) {
+    tiempoUltimaActualizacionEspectro = tiempo;
+    actualizarGraficoEspectro();
+  }
+
   // ========================================
   // GESTIÓN DE FASES Y TEMPORIZADORES
   // ========================================
   if (faseActual === estadoFases.EVALUACION || faseActual === estadoFases.ENTRENAMIENTO) {
     const tiempoTranscurrido = tiempo - tiempoFaseInicio;
+    const esInfinito = faseActual === estadoFases.ENTRENAMIENTO && entrenamientoInfinito;
 
-    // Actualizar display del temporizador
-    const tiempoRestante = Math.max(0, tiempoFaseDuracion - tiempoTranscurrido);
-    const minutos = Math.floor(tiempoRestante / 60);
-    const segundos = Math.floor(tiempoRestante % 60);
-    timerDisplay.textContent = `${minutos}:${segundos.toString().padStart(2, '0')}`;
-    actualizarHUD(tiempoRestante, tiempoTranscurrido);
-
-    // Cambiar color del timer en los últimos 10 segundos
-    if (tiempoRestante <= 10 && tiempoRestante > 0) {
-      timerDisplay.classList.add("warning");
-    } else {
+    if (esInfinito) {
+      // Entrenamiento infinito: cuenta hacia arriba, nunca se autotermina.
+      const minutos = Math.floor(tiempoTranscurrido / 60);
+      const segundos = Math.floor(tiempoTranscurrido % 60);
+      timerDisplay.textContent = `${minutos}:${segundos.toString().padStart(2, '0')}`;
       timerDisplay.classList.remove("warning");
+    } else {
+      // Actualizar display del temporizador
+      const tiempoRestante = Math.max(0, tiempoFaseDuracion - tiempoTranscurrido);
+      const minutos = Math.floor(tiempoRestante / 60);
+      const segundos = Math.floor(tiempoRestante % 60);
+      timerDisplay.textContent = `${minutos}:${segundos.toString().padStart(2, '0')}`;
+
+      // Cambiar color del timer en los últimos 10 segundos
+      if (tiempoRestante <= 10 && tiempoRestante > 0) {
+        timerDisplay.classList.add("warning");
+      } else {
+        timerDisplay.classList.remove("warning");
+      }
+
+      // Terminar fase cuando expire el tiempo
+      if (tiempoTranscurrido >= tiempoFaseDuracion) {
+        terminarFase();
+      }
     }
 
-    // Terminar fase cuando expire el tiempo
-    if (tiempoTranscurrido >= tiempoFaseDuracion) {
-      terminarFase();
-    }
+    actualizarHUD(tiempoFaseDuracion - tiempoTranscurrido, tiempoTranscurrido, esInfinito);
     if (faseActual === estadoFases.ENTRENAMIENTO) actualizarLogros(tiempo, tiempoTranscurrido);
   } else {
     document.querySelector("#session-hud")?.classList.add("hidden");
@@ -494,16 +702,18 @@ function actualizarCampoAnimado() {
   actualizarLecturaBiometrica();
 }
 
-function actualizarHUD(tiempoRestante, tiempoTranscurrido) {
+function actualizarHUD(tiempoRestante, tiempoTranscurrido, esInfinito = false) {
   const hud = document.querySelector("#session-hud");
   if (!hud) return;
   hud.classList.remove("hidden");
-  const minutos = Math.floor(tiempoRestante / 60);
-  const segundos = Math.floor(tiempoRestante % 60);
+  const baseSegundos = esInfinito ? tiempoTranscurrido : Math.max(0, tiempoRestante);
+  const minutos = Math.floor(baseSegundos / 60);
+  const segundos = Math.floor(baseSegundos % 60);
   document.querySelector("#hud-timer").textContent = `${minutos.toString().padStart(2, "0")}:${segundos.toString().padStart(2, "0")}`;
   document.querySelector("#hud-guide").textContent = faseActual === estadoFases.EVALUACION
     ? "Respira naturalmente"
     : ((tiempoTranscurrido % PACER_CICLO_TOTAL) < PACER_INHALACION ? "Inhala (4s)" : "Exhala (6s)");
+  document.querySelector("#btn-stop-training")?.classList.toggle("hidden", faseActual !== estadoFases.ENTRENAMIENTO);
 }
 
 function actualizarLogros(tiempo, tiempoTranscurrido) {
@@ -533,14 +743,12 @@ const TEXTO_DIDACTICO_HISTORIAL =
   "Una tendencia ascendente sugiere que tu sistema nervioso autónomo se está volviendo más flexible y resiliente ante " +
   "el estrés con la práctica regular — lo importante es la tendencia general, no el resultado de un solo día.";
 
-// Compara la última sesión de la lista contra la anterior, según % en zona alta.
-function calcularBadgeComparativo(sesiones) {
-  if (sesiones.length < 2) return null;
-  const actual = sesiones.at(-1);
-  const anterior = sesiones.at(-2);
+// Compara dos sesiones según su % de tiempo en zona alta.
+function calcularBadgeZonaAlta(actual, anterior, texto = "respecto a la sesión anterior") {
+  if (!actual || !anterior) return null;
   const diferencia = (actual.zonas?.alta || 0) - (anterior.zonas?.alta || 0);
   return {
-    texto: `${diferencia >= 0 ? "+" : ""}${diferencia}% de tiempo en coherencia alta respecto a tu última sesión`,
+    texto: `${diferencia >= 0 ? "+" : ""}${diferencia}% de tiempo en coherencia alta ${texto}`,
     positivo: diferencia >= 0,
   };
 }
@@ -649,9 +857,13 @@ function dibujarHistorialLineas(sesiones) {
 }
 
 // Mostrar historial persistente con tendencia de CS y % de coherencia alta.
+// Cada sesión de la lista es un botón: al pulsarlo se abre su reporte
+// completo (dona + logros + tarjeta didáctica), igual que al cerrar una
+// sesión en vivo — así el botón de historial da acceso a los reportes
+// pasados, no sólo a un resumen comprimido.
 function mostrarHistorialCompleto() {
   const sesiones = registroHistorial.slice(-10);
-  const badge = calcularBadgeComparativo(sesiones);
+  const badge = calcularBadgeZonaAlta(sesiones.at(-1), sesiones.at(-2), "respecto a tu última sesión");
 
   document.querySelector("#history-summary").innerHTML = `
     ${badge ? `<p class="badge-comparativa ${badge.positivo ? "positive" : "negative"}">${badge.positivo ? "▲" : "▼"} ${badge.texto}</p>` : ""}
@@ -660,7 +872,7 @@ function mostrarHistorialCompleto() {
       <span><i style="background:#4c8dff"></i>CS promedio</span>
     </div>
     <div class="history-sessions">${sesiones
-      .map((registro, indice) => `<span>Sesión ${indice + 1}: ${(registro.avgCS ?? registro.coherencia ?? 0).toFixed(1)} CS · ${registro.zonas?.alta ?? 0}% alta</span>`)
+      .map((registro, indice) => `<button type="button" class="history-session-btn" data-indice="${indice}">Sesión ${indice + 1}: ${(registro.avgCS ?? registro.coherencia ?? 0).toFixed(1)} CS · ${registro.zonas?.alta ?? 0}% alta →</button>`)
       .join("")}</div>
     <div class="didactic-card">
       <p class="eyebrow">CÓMO LEER TU PROGRESO</p>
@@ -668,7 +880,32 @@ function mostrarHistorialCompleto() {
     </div>
   `;
   dibujarHistorialLineas(sesiones);
+
+  document.querySelectorAll(".history-session-btn").forEach((boton) => {
+    boton.addEventListener("click", () => {
+      const indice = Number(boton.dataset.indice);
+      mostrarReporteHistorico(sesiones, indice);
+    });
+  });
+
   document.querySelector("#history-dialog").showModal();
+}
+
+// Abre el reporte completo de una sesión guardada (accedida desde el
+// panel de historial) reutilizando el mismo maquetado que el reporte de
+// cierre de sesión en vivo.
+function mostrarReporteHistorico(sesiones, indice) {
+  const registro = sesiones[indice];
+  if (!registro) return;
+  const anterior = sesiones[indice - 1] || null;
+  const fecha = new Date(registro.fecha);
+  const tituloReporte = Number.isNaN(fecha.getTime())
+    ? `Sesión ${indice + 1}`
+    : fecha.toLocaleDateString("es", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+  renderizarReporteSesion(registro, anterior, tituloReporte);
+  document.querySelector("#history-dialog").close();
+  document.querySelector("#results-dialog").showModal();
 }
 
 function actualizarSimulacionAutomatica(tiempo) {
@@ -729,6 +966,7 @@ let rmssdFinal = 0;
 let registroHistorial = [];
 let registroBasal = null;
 let evaluacionOmitida = false;
+let entrenamientoInfinito = false;
 let puntosLogro = 0;
 let acumuladoCS = 0;
 let tiempoCS = 0;
@@ -810,8 +1048,9 @@ function iniciarEntrenamiento() {
 
   faseActual = estadoFases.ENTRENAMIENTO;
   tiempoFaseInicio = reloj.getElapsedTime();
+  entrenamientoInfinito = Boolean(document.querySelector("#training-infinite")?.checked);
   const duracionInput = document.querySelector("#training-duration");
-  tiempoFaseDuracion = Number(duracionInput.value) * 60;
+  tiempoFaseDuracion = entrenamientoInfinito ? Infinity : Number(duracionInput.value) * 60;
   tiempoZonas.baja = 0;
   tiempoZonas.media = 0;
   tiempoZonas.alta = 0;
@@ -823,11 +1062,22 @@ function iniciarEntrenamiento() {
 
   actualizarInstrucciones(
     "Entrenamiento HRVB",
-    "Sincroniza tu respiración con el orbe. Inhala (4s) - Exhala (6s)",
+    entrenamientoInfinito
+      ? "Sincroniza tu respiración con el orbe. Inhala (4s) - Exhala (6s). Detén cuando quieras con el botón Detener."
+      : "Sincroniza tu respiración con el orbe. Inhala (4s) - Exhala (6s)",
     tiempoFaseDuracion
   );
 
-  console.log("[FASE 2] Entrenamiento HRVB iniciado - 3 minutos");
+  console.log(`[FASE 2] Entrenamiento HRVB iniciado - ${entrenamientoInfinito ? "infinito" : (tiempoFaseDuracion / 60) + " min"}`);
+}
+
+// Termina el entrenamiento manualmente (botón Detener) — funciona tanto
+// para acortar un entrenamiento con duración fija como para cerrar uno
+// infinito, ya que las métricas de la sesión ya se acumulan de forma
+// continua y no dependen de que el temporizador llegue a cero.
+function detenerEntrenamiento() {
+  if (faseActual !== estadoFases.ENTRENAMIENTO) return;
+  terminarFase();
 }
 
 // Terminar fase y pasar a la siguiente
@@ -897,12 +1147,16 @@ function actualizarInstrucciones(titulo, texto, duracion) {
   }
 }
 
-// Mostrar resultados de la sesión — reporte inspirado en HeartMath Inner Balance:
-// dona tricolor de distribución de coherencia, resumen de logros, insignia
-// comparativa frente a la sesión anterior y una tarjeta didáctica.
-function mostrarResultados(registro) {
-  const badge = calcularBadgeComparativo(registroHistorial);
+// Construye el reporte de una sesión (dona tricolor, resumen de logros,
+// insignia comparativa y tarjeta didáctica) dentro de #results-dialog.
+// Es la pieza compartida entre "terminar entrenamiento" y "abrir un
+// reporte pasado desde el historial" — misma vista, distinto origen.
+function renderizarReporteSesion(registro, registroAnterior, tituloReporte) {
+  const badge = calcularBadgeZonaAlta(registro, registroAnterior, registroAnterior ? "respecto a tu última sesión" : undefined);
   const zonas = { baja: registro.zonas.baja || 0, media: registro.zonas.media || 0, alta: registro.zonas.alta || 0 };
+
+  const tituloEl = document.querySelector("#results-title");
+  if (tituloEl) tituloEl.textContent = tituloReporte || "Tu sesión de coherencia";
 
   document.querySelector("#results-content").innerHTML = `
     <div class="report-grid">
@@ -934,6 +1188,11 @@ function mostrarResultados(registro) {
   `;
 
   dibujarDonutCoherencia(document.querySelector("#results-donut"), zonas);
+}
+
+// Mostrar resultados al cerrar la sesión en vivo.
+function mostrarResultados(registro) {
+  renderizarReporteSesion(registro, registroHistorial.at(-2), "Tu sesión de coherencia");
   document.querySelector("#session-hud")?.classList.add("hidden");
   document.querySelector("#results-dialog").showModal();
 }
@@ -998,8 +1257,19 @@ let flujoCamara = null;
 let camaraActiva = false;
 let cuadroCamara = null;
 let videoCamara = null;
-let muestrasPPG = [];
 let ultimaCrestaPPG = 0;
+
+// Estado del detector de pulso por cámara: filtro de paso bajo + línea base
+// lenta (sigue la deriva de exposición automática) + disparador con
+// histéresis (evita contar el mismo latido dos veces) sobre un umbral que
+// se adapta a la amplitud real de la señal en vez de un valor fijo.
+const BRILLO_MINIMO_DEDO = 60; // canal rojo promedio por debajo del cual no hay dedo sobre el flash
+let filtroPPG = null;
+let baseLinePPG = null;
+let amplitudPPG = 0;
+let sobreLineaPPG = false;
+let brilloPromedioPPG = 0;
+let ultimoAvisoSenalPPG = "";
 
 // Elementos UI
 const botonConectar = document.querySelector("#btn-conectar-main");
@@ -1013,6 +1283,13 @@ const overlayInstrucciones = document.querySelector("#phase-overlay");
 const timerDisplay = document.querySelector("#timer-display");
 const trainingDuration = document.querySelector("#training-duration");
 const trainingDurationValue = document.querySelector("#training-duration-value");
+const trainingInfinite = document.querySelector("#training-infinite");
+const trainingDurationRow = document.querySelector("#training-duration-row");
+const botonDetenerEntrenamiento = document.querySelector("#btn-stop-training");
+const sliderTamanoParticulas = document.querySelector("#particle-size");
+const valorTamanoParticulas = document.querySelector("#particle-size-value");
+const sliderBrilloParticulas = document.querySelector("#particle-brightness");
+const valorBrilloParticulas = document.querySelector("#particle-brightness-value");
 
 // Listeners de botones de fase
 btn1.addEventListener("click", iniciarEvaluacionBasal);
@@ -1020,13 +1297,29 @@ btn2.addEventListener("click", iniciarEntrenamiento);
 botonSaltarBasal?.addEventListener("click", saltarEvaluacionBasal);
 botonCamara.addEventListener("click", iniciarCamaraPPG);
 document.querySelector("#btn-start-training").addEventListener("click", iniciarEntrenamiento);
+botonDetenerEntrenamiento?.addEventListener("click", detenerEntrenamiento);
 trainingDuration.addEventListener("input", () => {
   trainingDurationValue.value = trainingDuration.value;
+});
+trainingInfinite?.addEventListener("change", () => {
+  const infinito = trainingInfinite.checked;
+  trainingDuration.disabled = infinito;
+  trainingDurationRow?.classList.toggle("disabled", infinito);
 });
 btn3.addEventListener("click", () => {
   if (registroHistorial.length > 0) {
     mostrarHistorialCompleto();
   }
+});
+
+// Sliders de apariencia del orbe — se aplican en vivo, sin reconstruir geometría.
+sliderTamanoParticulas?.addEventListener("input", () => {
+  parametros.tamaño = Number(sliderTamanoParticulas.value);
+  valorTamanoParticulas.textContent = parametros.tamaño.toFixed(2);
+});
+sliderBrilloParticulas?.addEventListener("input", () => {
+  brilloParticulas = Number(sliderBrilloParticulas.value);
+  valorBrilloParticulas.textContent = brilloParticulas.toFixed(2);
 });
 
 function actualizarEstadoBluetooth(estado, conectado = false) {
@@ -1063,25 +1356,36 @@ async function iniciarCamaraPPG() {
     videoCamara.srcObject = flujoCamara;
     videoCamara.classList.add("active");
     await videoCamara.play();
-    const pista = flujoCamara.getVideoTracks()[0];
-    if (pista.getCapabilities?.().torch) {
-      try {
+
+    // El chequeo/activación del flash es un extra: si el navegador lanza un
+    // error aquí (algunos Android lo hacen al leer getCapabilities), no debe
+    // tirar abajo una cámara que ya está funcionando.
+    try {
+      const pista = flujoCamara.getVideoTracks()[0];
+      if (pista.getCapabilities?.().torch) {
         await pista.applyConstraints({ advanced: [{ torch: true }] });
-      } catch (error) {
-        console.info("El flash no está disponible; continúa sin flash.", error);
       }
+    } catch (error) {
+      console.info("El flash no está disponible; continúa sin flash.", error);
     }
+
     cuadroCamara = document.createElement("canvas");
     cuadroCamara.width = 32;
     cuadroCamara.height = 32;
-    muestrasPPG = [];
+    filtroPPG = null;
+    baseLinePPG = null;
+    amplitudPPG = 0;
+    sobreLineaPPG = false;
+    brilloPromedioPPG = 0;
     ultimaCrestaPPG = 0;
+    ultimoAvisoSenalPPG = "";
     camaraActiva = true;
     botonCamara.textContent = "Cámara activa · detener";
     botonCamara.onclick = detenerCamaraPPG;
-    actualizarEstadoBluetooth("Cámara activa · coloca el dedo sobre el lente", true);
+    actualizarEstadoBluetooth("Cámara activa · coloca el dedo cubriendo el lente y el flash", true);
     leerPulsoCamara();
   } catch (error) {
+    console.error("No se pudo iniciar la cámara PPG:", error);
     detenerCamaraPPG();
     actualizarEstadoBluetooth(error.name === "NotAllowedError" ? "Permiso de cámara rechazado" : "No se pudo activar la cámara");
   }
@@ -1091,6 +1395,13 @@ function detenerCamaraPPG() {
   flujoCamara?.getTracks().forEach((pista) => pista.stop());
   flujoCamara = null;
   camaraActiva = false;
+  filtroPPG = null;
+  baseLinePPG = null;
+  amplitudPPG = 0;
+  sobreLineaPPG = false;
+  brilloPromedioPPG = 0;
+  ultimaCrestaPPG = 0;
+  ultimoAvisoSenalPPG = "";
   if (videoCamara) {
     videoCamara.srcObject = null;
     videoCamara.classList.remove("active");
@@ -1118,29 +1429,74 @@ function leerPulsoCamara() {
     verde += pixeles[indice + 1];
   }
   const cantidadPixeles = pixeles.length / 4;
-  muestrasPPG.push({ tiempo: performance.now(), valor: rojo / cantidadPixeles - verde / cantidadPixeles });
-  if (muestrasPPG.length > 40) muestrasPPG.shift();
-  detectarLatidoPPG();
+  procesarMuestraPPG(rojo / cantidadPixeles, verde / cantidadPixeles, performance.now());
   requestAnimationFrame(leerPulsoCamara);
 }
 
-function detectarLatidoPPG() {
-  if (muestrasPPG.length < 7) return;
-  const candidato = muestrasPPG.at(-4);
-  const vecinos = muestrasPPG.slice(-7);
-  const promedio = vecinos.reduce((suma, muestra) => suma + muestra.valor, 0) / vecinos.length;
-  const desviacion = Math.sqrt(vecinos.reduce((suma, muestra) => suma + (muestra.valor - promedio) ** 2, 0) / vecinos.length);
-  const esCresta = candidato.valor === Math.max(...vecinos.map((muestra) => muestra.valor));
-  const intervalo = candidato.tiempo - ultimaCrestaPPG;
-  if (!esCresta || candidato.valor < promedio + desviacion * 0.35) return;
-  if (!ultimaCrestaPPG) {
-    ultimaCrestaPPG = candidato.tiempo;
+// Detector de pulso por vídeo: un local-max en una ventana de pocos frames
+// (~100 ms) es indistinguible del ruido de sensor de la cámara, así que en
+// vez de eso se sigue la señal con dos filtros exponenciales (uno rápido
+// para suavizar ruido, otro lento como línea base que absorbe la deriva de
+// exposición automática) y se detecta el latido como un cruce con
+// histéresis sobre un umbral que se adapta a la amplitud real de la señal.
+// También exige que el canal rojo esté suficientemente iluminado — si no,
+// no hay dedo cubriendo la cámara/flash y cualquier "latido" sería ruido.
+function procesarMuestraPPG(promedioRojo, promedioVerde, tiempoMs) {
+  const valorCrudo = promedioRojo - promedioVerde;
+  brilloPromedioPPG = filtroPPG === null ? promedioRojo : THREE.MathUtils.lerp(brilloPromedioPPG, promedioRojo, 0.2);
+
+  if (filtroPPG === null) {
+    filtroPPG = valorCrudo;
+    baseLinePPG = valorCrudo;
+    actualizarEstadoSenalPPG();
     return;
   }
-  if (intervalo < 350 || intervalo > 1500) return;
-  ultimaCrestaPPG = candidato.tiempo;
-  bpm = Math.round(60000 / intervalo);
-  registrarIntervaloRR(intervalo);
+
+  filtroPPG = THREE.MathUtils.lerp(filtroPPG, valorCrudo, 0.35);
+  baseLinePPG = THREE.MathUtils.lerp(baseLinePPG, filtroPPG, 0.02);
+
+  const hayDedo = brilloPromedioPPG >= BRILLO_MINIMO_DEDO;
+  if (!hayDedo) {
+    amplitudPPG = 0;
+    sobreLineaPPG = false;
+    actualizarEstadoSenalPPG();
+    return;
+  }
+
+  const desviacion = filtroPPG - baseLinePPG;
+  // Envolvente adaptativa: sigue picos nuevos al instante, decae despacio.
+  amplitudPPG = Math.max(amplitudPPG * 0.995, Math.abs(desviacion));
+  const margen = Math.max(amplitudPPG * 0.3, 0.4);
+
+  if (!sobreLineaPPG && desviacion > margen) {
+    sobreLineaPPG = true;
+    const intervalo = tiempoMs - ultimaCrestaPPG;
+    if (!ultimaCrestaPPG || intervalo > 1500) {
+      // Primer latido o señal recién recuperada: sólo fija la referencia.
+      ultimaCrestaPPG = tiempoMs;
+    } else if (intervalo >= 350) {
+      ultimaCrestaPPG = tiempoMs;
+      bpm = Math.round(60000 / intervalo);
+      registrarIntervaloRR(intervalo);
+    }
+  } else if (sobreLineaPPG && desviacion < -margen * 0.4) {
+    sobreLineaPPG = false;
+  }
+
+  actualizarEstadoSenalPPG();
+}
+
+function actualizarEstadoSenalPPG() {
+  if (!camaraActiva || !estadoConexion.startsWith("Cámara")) return;
+  const hayDedo = brilloPromedioPPG >= BRILLO_MINIMO_DEDO;
+  const mensaje = !hayDedo
+    ? "Cámara activa · coloca el dedo cubriendo el lente y el flash"
+    : !ultimaCrestaPPG
+      ? "Cámara activa · detectando pulso..."
+      : `Cámara activa · ${bpm || "--"} BPM`;
+  if (mensaje === ultimoAvisoSenalPPG) return;
+  ultimoAvisoSenalPPG = mensaje;
+  actualizarEstadoBluetooth(mensaje, true);
 }
 
 function decodificarMedicionFrecuenciaCardiaca(event) {
@@ -1256,6 +1612,9 @@ cargarHistorial();
 actualizarTendenciaBiometrica();
 actualizarEstadoBluetooth("Desconectado", false);
 actualizarLecturaBiometrica();
+graficoPoincare = crearGraficoPoincare();
+graficoEspectro = crearGraficoEspectro();
+actualizarGraficoEspectro();
 
 // ======================================================
 // 09 — BUCLE DE ANIMACIÓN

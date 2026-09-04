@@ -28,8 +28,12 @@
           <p id="instruction-text"></p>
           <div id="timer-display" class="timer-display">--:--</div>
           <div id="training-config" class="training-config hidden">
-            <label for="training-duration">Duración del entrenamiento <strong><output id="training-duration-value">3</output> min</strong></label>
-            <input id="training-duration" type="range" min="2" max="15" value="3" />
+            <label id="training-duration-row" for="training-duration">Duración del entrenamiento <strong><output id="training-duration-value">3</output> min</strong></label>
+            <input id="training-duration" type="range" min="1" max="15" value="3" />
+            <label class="infinite-toggle">
+              <input id="training-infinite" type="checkbox" />
+              <span>Entrenamiento infinito · detén cuando quieras</span>
+            </label>
             <button id="btn-start-training" class="btn-primary">Iniciar entrenamiento de coherencia</button>
           </div>
         </div>
@@ -38,14 +42,11 @@
       <div id="session-hud" class="session-hud hidden" aria-live="polite">
         <strong id="hud-timer">00:00</strong>
         <span id="hud-guide">Respira naturalmente</span>
+        <button id="btn-stop-training" class="hud-stop hidden" type="button">Detener</button>
       </div>
 
       <div class="visual-readout"><span id="coherence-zone" class="zone-dot low"></span><strong id="coherence-label">Baja coherencia</strong><span id="coherence-score">0.5 CS</span></div>
-      <section class="tacogram-panel" aria-label="Tacograma en tiempo real">
-        <div class="section-heading"><h2>Tacograma RR</h2><span>últimos 50 intervalos</span></div>
-        <canvas id="tacogram" aria-label="Gráfico de intervalos RR"></canvas>
-        <div class="tacogram-scale"><span>RR (ms)</span><span id="rr-range">--</span></div>
-      </section>
+      <canvas id="tacogram" class="tacogram-strip" aria-label="Tacograma en tiempo real: intervalos RR coloreados según el estado de coherencia"></canvas>
     </section>
 
     <!-- Panel de control de sesión HRV Biofeedback -->
@@ -83,7 +84,7 @@
 
         <button id="btn-phase2" class="btn-phase" disabled>
           <span class="phase-number">2</span>
-          <span class="phase-text">Entrenamiento de coherencia cardíaca<br><small>2–15 minutos · pacer 0.1 Hz</small></span>
+          <span class="phase-text">Entrenamiento de coherencia cardíaca<br><small>1–15 min o infinito · pacer 0.1 Hz</small></span>
         </button>
 
         <button id="btn-phase3" class="btn-phase" disabled>
@@ -109,6 +110,26 @@
         </div>
       </section>
 
+      <section class="appearance-section" aria-label="Apariencia del orbe">
+        <h3>Apariencia del orbe</h3>
+        <label for="particle-size">Tamaño de partículas <output id="particle-size-value">0.40</output></label>
+        <input id="particle-size" type="range" min="0.1" max="1" step="0.05" value="0.4" />
+        <label for="particle-brightness">Brillo de partículas <output id="particle-brightness-value">1.00</output></label>
+        <input id="particle-brightness" type="range" min="0.1" max="2.5" step="0.05" value="1" />
+      </section>
+
+      <section class="analysis-section" aria-label="Análisis avanzado de variabilidad cardíaca">
+        <div class="section-heading"><h3>Análisis avanzado (VFC)</h3></div>
+        <div class="chart-block">
+          <p class="chart-label">Diagrama de Poincaré <span>RRₙ vs RRₙ₊₁ · últimos 50 latidos</span></p>
+          <div class="chart-wrap"><canvas id="chart-poincare" aria-label="Diagrama de Poincaré de los intervalos RR"></canvas></div>
+        </div>
+        <div class="chart-block">
+          <p class="chart-label">Densidad espectral (PSD) <span>pico en 0.1 Hz = coherencia</span></p>
+          <div class="chart-wrap"><canvas id="chart-psd" aria-label="Densidad espectral de potencia de la variabilidad cardíaca"></canvas></div>
+        </div>
+      </section>
+
       <!-- Información de sesión -->
       <div class="session-info">
         <h3>Información de Sesión</h3>
@@ -125,7 +146,7 @@
   </main>
 
   <dialog id="info-dialog" class="info-dialog"><button class="dialog-close" aria-label="Cerrar">×</button><p class="eyebrow">APRENDER</p><h2 id="info-title"></h2><p id="info-text"></p></dialog>
-  <dialog id="results-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar resultados">×</button><p class="eyebrow">REPORTE DE SESIÓN</p><h2>Tu sesión de coherencia</h2><div id="results-content"></div></dialog>
+  <dialog id="results-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar resultados">×</button><p class="eyebrow">REPORTE DE SESIÓN</p><h2 id="results-title">Tu sesión de coherencia</h2><div id="results-content"></div></dialog>
   <dialog id="history-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar historial">×</button><p class="eyebrow">PROGRESO</p><h2>Últimas sesiones</h2><canvas id="history-chart" aria-label="Evolución del puntaje de coherencia y del tiempo en coherencia alta"></canvas><div id="history-summary"></div></dialog>
 
   <script type="importmap">
@@ -136,6 +157,12 @@
       }
     }
   </script>
+
+  <!-- Chart.js clásico (no-module): se ejecuta antes que main.js y queda
+       disponible como global `Chart`. main.js comprueba su presencia antes
+       de usarlo, así que si el CDN falla el resto de la app (Three.js,
+       Bluetooth, cámara) sigue funcionando igual. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 
   <script type="module" src="./main.js"></script>
 </body>
