@@ -6,8 +6,8 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 // ======================================================
 
 const valoresIniciales = {
-  densidad: 1800,
-  tamaño: 0.12,
+  densidad: 2600,
+  tamaño: 0.05,
   dispersión: 0.8,
   amplitud: 3.0,
   frecuencia: 80,
@@ -100,6 +100,12 @@ const colorTemporal = new THREE.Color();
 const colorSomatico = new THREE.Color("#660000");
 let anillo = null;
 let esferaExterior = null;
+
+// Suavizado orgánico del orbe (independiente del framerate).
+let factorPacerSuavizado = 0.18;
+let escalaSuavizada = 0.82;
+let tiempoAnterior = 0;
+const texturaParticula = crearTexturaParticula();
 
 // ======================================================
 // 04 — REGLAS GENERATIVAS
@@ -232,8 +238,26 @@ function dibujarTacograma() {
   document.querySelector("#rr-range").textContent = `${Math.round(minimo + 20)}–${Math.round(maximo - 20)} ms`;
 }
 
+// Normaliza el puntaje de coherencia (0.2 – 5.0) a un rango 0-1.
+// Se usa tanto para el color del orbe como para el tamaño/brillo de las partículas.
+function normalizarCoherencia(factor) {
+  return THREE.MathUtils.clamp((factor - 0.2) / 1.8, 0, 1);
+}
+
+// Curva de aceleración/desaceleración suave (smoothstep) para evitar
+// cambios de dirección abruptos en el pacer respiratorio.
+function suavizarS(t) {
+  const clamped = THREE.MathUtils.clamp(t, 0, 1);
+  return clamped * clamped * (3 - 2 * clamped);
+}
+
+// Factor de interpolación independiente del framerate para transiciones orgánicas.
+function factorSuavizado(delta, velocidad) {
+  return 1 - Math.exp(-velocidad * delta);
+}
+
 function mapearColorSomatico(factor, destino) {
-  const valor = THREE.MathUtils.clamp((factor - 0.2) / 1.8, 0, 1);
+  const valor = normalizarCoherencia(factor);
   for (let indice = 0; indice < paradasCromaticas.length - 1; indice++) {
     const actual = paradasCromaticas[indice];
     const siguiente = paradasCromaticas[indice + 1];
@@ -246,6 +270,24 @@ function mapearColorSomatico(factor, destino) {
   return destino.copy(paradasCromaticas.at(-1).color);
 }
 
+// Textura circular suave (radial) usada como sprite de cada partícula.
+function crearTexturaParticula() {
+  const tamano = 64;
+  const lienzo = document.createElement("canvas");
+  lienzo.width = tamano;
+  lienzo.height = tamano;
+  const contexto = lienzo.getContext("2d");
+  const gradiente = contexto.createRadialGradient(tamano / 2, tamano / 2, 0, tamano / 2, tamano / 2, tamano / 2);
+  gradiente.addColorStop(0, "rgba(255,255,255,1)");
+  gradiente.addColorStop(0.4, "rgba(255,255,255,0.65)");
+  gradiente.addColorStop(1, "rgba(255,255,255,0)");
+  contexto.fillStyle = gradiente;
+  contexto.fillRect(0, 0, tamano, tamano);
+  const textura = new THREE.CanvasTexture(lienzo);
+  textura.colorSpace = THREE.SRGBColorSpace;
+  return textura;
+}
+
 function crearAnillo() {
   esferaExterior = new THREE.Mesh(
     new THREE.SphereGeometry(3, 32, 24),
@@ -253,13 +295,59 @@ function crearAnillo() {
   );
   grupoCampo.add(esferaExterior);
 
-  const geometria = new THREE.IcosahedronGeometry(2.5, 5);
-  const material = new THREE.MeshStandardMaterial({
-    color: "#e45757", roughness: 0.25, metalness: 0.08,
-    emissive: "#e45757", emissiveIntensity: 0.35,
+  // Orbe compuesto de pequeñísimas partículas distribuidas sobre una
+  // esfera con espaciado dorado (Fibonacci sphere): visual orgánica y
+  // uniforme que respira y cambia de color según el estado somático.
+  const cantidad = parametros.densidad;
+  const posiciones = new Float32Array(cantidad * 3);
+  const colores = new Float32Array(cantidad * 3);
+  const direcciones = new Float32Array(cantidad * 3);
+  const radiosBase = new Float32Array(cantidad);
+  const fases = new Float32Array(cantidad);
+  const brillos = new Float32Array(cantidad);
+
+  const anguloDorado = Math.PI * (3 - Math.sqrt(5));
+  for (let indice = 0; indice < cantidad; indice++) {
+    const y = 1 - (indice / Math.max(cantidad - 1, 1)) * 2;
+    const radioEnY = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = anguloDorado * indice;
+    const direccionX = Math.cos(theta) * radioEnY;
+    const direccionZ = Math.sin(theta) * radioEnY;
+
+    const indice3 = indice * 3;
+    direcciones[indice3] = direccionX;
+    direcciones[indice3 + 1] = y;
+    direcciones[indice3 + 2] = direccionZ;
+
+    const jitter = 1 + aleatoriedadConSemilla(indice * 0.131, 0, parametros.semilla) * 0.06;
+    radiosBase[indice] = 2.5 * jitter;
+    fases[indice] = aleatoriedadConSemilla(indice * 0.371, 5.2, parametros.semilla) * Math.PI * 2;
+    brillos[indice] = 0.85 + Math.abs(aleatoriedadConSemilla(indice * 0.517, 9.8, parametros.semilla)) * 0.3;
+
+    posiciones[indice3] = direccionX * radiosBase[indice];
+    posiciones[indice3 + 1] = y * radiosBase[indice];
+    posiciones[indice3 + 2] = direccionZ * radiosBase[indice];
+
+    colores[indice3] = colores[indice3 + 1] = colores[indice3 + 2] = 1;
+  }
+
+  const geometria = new THREE.BufferGeometry();
+  geometria.setAttribute("position", new THREE.BufferAttribute(posiciones, 3));
+  geometria.setAttribute("color", new THREE.BufferAttribute(colores, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: parametros.tamaño,
+    map: texturaParticula,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
   });
-  anillo = new THREE.Mesh(geometria, material);
-  anillo.castShadow = true;
+
+  anillo = new THREE.Points(geometria, material);
+  anillo.userData = { direcciones, radiosBase, fases, brillos };
   grupoCampo.add(anillo);
 }
 
@@ -282,7 +370,40 @@ function generarCampo() {
   crearAnillo();
 }
 
-function actualizarAnillo(tiempo) {
+// Reacomoda cada partícula según el radio de respiración actual, con una
+// pequeñísima deriva orgánica individual (fase propia por partícula) y
+// brillo/tamaño que se afinan con la coherencia — más calma y foco visual
+// cuanto más alta es la coherencia, más dispersión cuanto más baja.
+function actualizarParticulasCampo(tiempo, escalaFinal) {
+  const atributoPosicion = anillo.geometry.attributes.position;
+  const atributoColor = anillo.geometry.attributes.color;
+  const posiciones = atributoPosicion.array;
+  const colores = atributoColor.array;
+  const { direcciones, radiosBase, fases, brillos } = anillo.userData;
+  const coherenciaNormalizada = normalizarCoherencia(factorSomatico);
+  const amplitudDeriva = THREE.MathUtils.lerp(0.045, 0.015, coherenciaNormalizada);
+
+  for (let indice = 0; indice < radiosBase.length; indice++) {
+    const indice3 = indice * 3;
+    const deriva = 1 + Math.sin(tiempo * 0.16 + fases[indice]) * amplitudDeriva;
+    const radio = radiosBase[indice] * escalaFinal * deriva;
+
+    posiciones[indice3] = direcciones[indice3] * radio;
+    posiciones[indice3 + 1] = direcciones[indice3 + 1] * radio;
+    posiciones[indice3 + 2] = direcciones[indice3 + 2] * radio;
+
+    const brillo = brillos[indice] * THREE.MathUtils.lerp(0.75, 1.25, coherenciaNormalizada);
+    colores[indice3] = colorSomatico.r * brillo;
+    colores[indice3 + 1] = colorSomatico.g * brillo;
+    colores[indice3 + 2] = colorSomatico.b * brillo;
+  }
+
+  atributoPosicion.needsUpdate = true;
+  atributoColor.needsUpdate = true;
+  anillo.material.size = parametros.tamaño * THREE.MathUtils.lerp(1.0, 0.7, coherenciaNormalizada);
+}
+
+function actualizarAnillo(tiempo, delta) {
   if (!anillo) return;
   if (esferaExterior) {
     esferaExterior.rotation.y -= 0.0004;
@@ -290,69 +411,76 @@ function actualizarAnillo(tiempo) {
   }
 
   // ========================================
-  // PACER RESPIRATORIO (Fase 2 solamente)
+  // PACER RESPIRATORIO (Fase 2 solamente) — curva smoothstep,
+  // sin cortes lineales, para una respiración visual orgánica.
   // ========================================
-  let factorPacer = 0.18;
-  
+  let factorPacerObjetivo = 0.18;
+
   if (faseActual === estadoFases.ENTRENAMIENTO) {
-    // Calcular posición en el ciclo respiratorio
     const tiempoEnFase = tiempo - tiempoFaseInicio;
     const posicionCiclo = (tiempoEnFase % PACER_CICLO_TOTAL) / PACER_CICLO_TOTAL;
-    
-    if (posicionCiclo < PACER_INHALACION / PACER_CICLO_TOTAL) {
-      // Fase de inhalación (0 -> 1)
-      factorPacer = posicionCiclo / (PACER_INHALACION / PACER_CICLO_TOTAL);
+    const umbralInhalacion = PACER_INHALACION / PACER_CICLO_TOTAL;
+
+    if (posicionCiclo < umbralInhalacion) {
+      // Inhalación: expande el orbe durante 4s.
+      factorPacerObjetivo = suavizarS(posicionCiclo / umbralInhalacion);
     } else {
-      // Fase de exhalación (1 -> 0)
-      const posicionExhalacion = (posicionCiclo - PACER_INHALACION / PACER_CICLO_TOTAL) / 
-                                 (PACER_EXHALACION / PACER_CICLO_TOTAL);
-      factorPacer = 1 - posicionExhalacion;
+      // Exhalación: contrae el orbe durante 6s.
+      const progresoExhalacion = (posicionCiclo - umbralInhalacion) / (1 - umbralInhalacion);
+      factorPacerObjetivo = 1 - suavizarS(progresoExhalacion);
     }
-    
-    // Inhalación expande el orbe durante 4s; exhalación lo contrae durante 6s.
   }
 
-  const pulso = 1 + Math.sin(tiempo * frecuenciaLatido * Math.PI * 2) * 0.018;
-  const escala = THREE.MathUtils.lerp(0.5, 1.18, factorPacer) * pulso;
+  // El pacer se sigue con una inercia suave (nunca salta al valor objetivo),
+  // y el pulso cardíaco se reduce a una textura de fondo casi imperceptible.
+  factorPacerSuavizado = THREE.MathUtils.damp(factorPacerSuavizado, factorPacerObjetivo, 1.6, delta);
+  const pulso = 1 + Math.sin(tiempo * frecuenciaLatido * Math.PI * 2) * 0.008;
+  const escalaObjetivo = THREE.MathUtils.lerp(0.82, 1.16, factorPacerSuavizado) * pulso;
+  escalaSuavizada = THREE.MathUtils.damp(escalaSuavizada, escalaObjetivo, 3.2, delta);
+
   mapearColorSomatico(factorSomatico, colorTemporal);
-  colorSomatico.lerp(colorTemporal, 0.08);
-  anillo.material.color.copy(colorSomatico);
-  anillo.material.emissive.copy(colorSomatico);
-  anillo.material.emissiveIntensity = 0.25 + factorSomatico * 0.65;
-  anillo.scale.setScalar(escala);
+  colorSomatico.lerp(colorTemporal, factorSuavizado(delta, 1.8));
+
+  actualizarParticulasCampo(tiempo, escalaSuavizada);
+
   anillo.rotation.y += 0.0015;
   anillo.rotation.x = Math.sin(tiempo * 0.22) * 0.08;
 }
 
 function actualizarCampoAnimado() {
   const tiempo = reloj.getElapsedTime();
+  const delta = THREE.MathUtils.clamp(tiempo - tiempoAnterior, 0, 0.1);
+  tiempoAnterior = tiempo;
+
   if (!caracteristicaFrecuenciaCardiaca) actualizarSimulacionAutomatica(tiempo);
-  factorSomatico = THREE.MathUtils.lerp(factorSomatico, factorSomaticoObjetivo, 0.04);
+  // Transiciones suaves e independientes del framerate (evita saltos bruscos
+  // en dispositivos con tasas de refresco variables).
+  factorSomatico = THREE.MathUtils.damp(factorSomatico, factorSomaticoObjetivo, 1.4, delta);
   const mediaRRObjetivo = (inputA + inputB) / 2;
-  mediaRRVisual = THREE.MathUtils.lerp(mediaRRVisual, mediaRRObjetivo, 0.08);
+  mediaRRVisual = THREE.MathUtils.damp(mediaRRVisual, mediaRRObjetivo, 0.6, delta);
   const frecuenciaObjetivo = 1000 / Math.max(mediaRRVisual, 1);
-  frecuenciaLatido = THREE.MathUtils.lerp(frecuenciaLatido, frecuenciaObjetivo, 0.08);
-  
+  frecuenciaLatido = THREE.MathUtils.damp(frecuenciaLatido, frecuenciaObjetivo, 0.6, delta);
+
   // ========================================
   // GESTIÓN DE FASES Y TEMPORIZADORES
   // ========================================
   if (faseActual === estadoFases.EVALUACION || faseActual === estadoFases.ENTRENAMIENTO) {
     const tiempoTranscurrido = tiempo - tiempoFaseInicio;
-    
+
     // Actualizar display del temporizador
     const tiempoRestante = Math.max(0, tiempoFaseDuracion - tiempoTranscurrido);
     const minutos = Math.floor(tiempoRestante / 60);
     const segundos = Math.floor(tiempoRestante % 60);
     timerDisplay.textContent = `${minutos}:${segundos.toString().padStart(2, '0')}`;
     actualizarHUD(tiempoRestante, tiempoTranscurrido);
-    
+
     // Cambiar color del timer en los últimos 10 segundos
     if (tiempoRestante <= 10 && tiempoRestante > 0) {
       timerDisplay.classList.add("warning");
     } else {
       timerDisplay.classList.remove("warning");
     }
-    
+
     // Terminar fase cuando expire el tiempo
     if (tiempoTranscurrido >= tiempoFaseDuracion) {
       terminarFase();
@@ -361,8 +489,8 @@ function actualizarCampoAnimado() {
   } else {
     document.querySelector("#session-hud")?.classList.add("hidden");
   }
-  
-  actualizarAnillo(tiempo);
+
+  actualizarAnillo(tiempo, delta);
   actualizarLecturaBiometrica();
 }
 
@@ -390,18 +518,76 @@ function actualizarLogros(tiempo, tiempoTranscurrido) {
   }
 }
 
-// Mostrar historial persistente con tendencia de CS y RMSSD.
-function mostrarHistorialCompleto() {
-  const sesiones = registroHistorial.slice(-10);
-  document.querySelector("#history-summary").innerHTML = sesiones
-    .map((registro, indice) => `<span>Sesión ${indice + 1}: ${(registro.avgCS ?? registro.coherencia ?? 0).toFixed(1)} CS · ${registro.rmssdFinal.toFixed(1)} ms RMSSD</span>`)
-    .join("");
-  dibujarHistorial(sesiones);
-  document.querySelector("#history-dialog").showModal();
+// ======================================================
+// 04b — REPORTES: TEXTOS DIDÁCTICOS Y COMPARATIVAS
+// ======================================================
+
+const TEXTO_DIDACTICO_SESION =
+  "La coherencia cardíaca ocurre cuando tu ritmo cardíaco forma una onda suave y armónica en sincronía con tu respiración. " +
+  "Más tiempo en la zona verde (alta coherencia) indica que tu sistema nervioso autónomo está equilibrado — el cuerpo señal " +
+  "de menor estrés percibido y mayor claridad mental. La zona roja no es un error: es información sobre dónde estaba tu " +
+  "cuerpo al empezar a practicar.";
+
+const TEXTO_DIDACTICO_HISTORIAL =
+  "Este gráfico compara tu Puntaje de Coherencia (CS) y tu porcentaje de tiempo en alta coherencia sesión a sesión. " +
+  "Una tendencia ascendente sugiere que tu sistema nervioso autónomo se está volviendo más flexible y resiliente ante " +
+  "el estrés con la práctica regular — lo importante es la tendencia general, no el resultado de un solo día.";
+
+// Compara la última sesión de la lista contra la anterior, según % en zona alta.
+function calcularBadgeComparativo(sesiones) {
+  if (sesiones.length < 2) return null;
+  const actual = sesiones.at(-1);
+  const anterior = sesiones.at(-2);
+  const diferencia = (actual.zonas?.alta || 0) - (anterior.zonas?.alta || 0);
+  return {
+    texto: `${diferencia >= 0 ? "+" : ""}${diferencia}% de tiempo en coherencia alta respecto a tu última sesión`,
+    positivo: diferencia >= 0,
+  };
 }
 
-function dibujarHistorial(sesiones) {
+// Dibuja un gráfico de dona tricolor (baja/media/alta) en un <canvas>.
+function dibujarDonutCoherencia(lienzo, zonasPorcentaje) {
+  if (!lienzo) return;
+  const escala = window.devicePixelRatio || 1;
+  const tamanoCss = lienzo.clientWidth || 128;
+  lienzo.width = tamanoCss * escala;
+  lienzo.height = tamanoCss * escala;
+  const contexto = lienzo.getContext("2d");
+  contexto.scale(escala, escala);
+  contexto.clearRect(0, 0, tamanoCss, tamanoCss);
+
+  const centro = tamanoCss / 2;
+  const radioExterior = centro - 4;
+  const radioInterior = radioExterior * 0.62;
+  const colores = { baja: "#e45757", media: "#4c8dff", alta: "#42d392" };
+  const orden = ["baja", "media", "alta"];
+
+  let anguloInicio = -Math.PI / 2;
+  orden.forEach((zona) => {
+    const porcentaje = zonasPorcentaje[zona] || 0;
+    const anguloBarrido = (porcentaje / 100) * Math.PI * 2;
+    if (anguloBarrido <= 0) return;
+    contexto.beginPath();
+    contexto.moveTo(centro, centro);
+    contexto.arc(centro, centro, radioExterior, anguloInicio, anguloInicio + anguloBarrido);
+    contexto.closePath();
+    contexto.fillStyle = colores[zona];
+    contexto.fill();
+    anguloInicio += anguloBarrido;
+  });
+
+  contexto.globalCompositeOperation = "destination-out";
+  contexto.beginPath();
+  contexto.arc(centro, centro, radioInterior, 0, Math.PI * 2);
+  contexto.fill();
+  contexto.globalCompositeOperation = "source-over";
+}
+
+// Gráfico de líneas con la evolución del CS y el % de coherencia alta
+// a lo largo de las últimas sesiones guardadas en localStorage.
+function dibujarHistorialLineas(sesiones) {
   const lienzo = document.querySelector("#history-chart");
+  if (!lienzo) return;
   const escala = window.devicePixelRatio || 1;
   const ancho = lienzo.clientWidth || 520;
   const alto = lienzo.clientHeight || 240;
@@ -411,27 +597,78 @@ function dibujarHistorial(sesiones) {
   contexto.scale(escala, escala);
   contexto.clearRect(0, 0, ancho, alto);
   if (!sesiones.length) return;
-  const valores = [
-    sesiones.map((registro) => registro.avgCS ?? registro.coherencia ?? 0),
-    sesiones.map((registro) => registro.rmssdFinal || 0),
-  ];
-  const maximo = Math.max(...valores.flat(), 1);
-  ["#42d392", "#4c8dff"].forEach((color, serie) => {
-    contexto.strokeStyle = color;
-    contexto.lineWidth = 2;
+
+  const margen = { top: 24, right: 16, bottom: 16, left: 16 };
+  const areaAncho = ancho - margen.left - margen.right;
+  const areaAlto = alto - margen.top - margen.bottom;
+
+  const seriesCS = sesiones.map((registro) => registro.avgCS ?? registro.coherencia ?? 0);
+  const seriesAlta = sesiones.map((registro) => registro.zonas?.alta ?? 0);
+  const maximoCS = Math.max(...seriesCS, 1);
+
+  contexto.strokeStyle = "rgba(255,255,255,0.06)";
+  contexto.lineWidth = 1;
+  for (let indice = 0; indice <= 3; indice++) {
+    const y = margen.top + (areaAlto / 3) * indice;
     contexto.beginPath();
-    valores[serie].forEach((valor, indice) => {
-      const x = sesiones.length === 1 ? ancho / 2 : 12 + (indice / (sesiones.length - 1)) * (ancho - 24);
-      const y = alto - 18 - (valor / maximo) * (alto - 36);
-      indice ? contexto.lineTo(x, y) : contexto.moveTo(x, y);
+    contexto.moveTo(margen.left, y);
+    contexto.lineTo(ancho - margen.right, y);
+    contexto.stroke();
+  }
+
+  const trazarLinea = (valores, maximo, color) => {
+    const puntoX = (indice) => (sesiones.length === 1 ? margen.left + areaAncho / 2 : margen.left + (indice / (sesiones.length - 1)) * areaAncho);
+    const puntoY = (valor) => margen.top + areaAlto - (valor / maximo) * areaAlto;
+
+    contexto.strokeStyle = color;
+    contexto.lineWidth = 2.5;
+    contexto.beginPath();
+    valores.forEach((valor, indice) => {
+      const x = puntoX(indice);
+      const y = puntoY(valor);
+      indice === 0 ? contexto.moveTo(x, y) : contexto.lineTo(x, y);
     });
     contexto.stroke();
-  });
-  contexto.font = "11px system-ui";
+
+    valores.forEach((valor, indice) => {
+      contexto.beginPath();
+      contexto.arc(puntoX(indice), puntoY(valor), 3, 0, Math.PI * 2);
+      contexto.fillStyle = color;
+      contexto.fill();
+    });
+  };
+
+  trazarLinea(seriesAlta, 100, "#42d392");
+  trazarLinea(seriesCS, maximoCS, "#4c8dff");
+
+  contexto.font = "600 10px -apple-system, BlinkMacSystemFont, sans-serif";
   contexto.fillStyle = "#42d392";
-  contexto.fillText("CS", 12, 16);
+  contexto.fillText("% Alta coherencia", margen.left, 14);
   contexto.fillStyle = "#4c8dff";
-  contexto.fillText("RMSSD", 42, 16);
+  contexto.fillText("CS promedio", margen.left + 112, 14);
+}
+
+// Mostrar historial persistente con tendencia de CS y % de coherencia alta.
+function mostrarHistorialCompleto() {
+  const sesiones = registroHistorial.slice(-10);
+  const badge = calcularBadgeComparativo(sesiones);
+
+  document.querySelector("#history-summary").innerHTML = `
+    ${badge ? `<p class="badge-comparativa ${badge.positivo ? "positive" : "negative"}">${badge.positivo ? "▲" : "▼"} ${badge.texto}</p>` : ""}
+    <div class="history-legend">
+      <span><i style="background:#42d392"></i>% tiempo en coherencia alta</span>
+      <span><i style="background:#4c8dff"></i>CS promedio</span>
+    </div>
+    <div class="history-sessions">${sesiones
+      .map((registro, indice) => `<span>Sesión ${indice + 1}: ${(registro.avgCS ?? registro.coherencia ?? 0).toFixed(1)} CS · ${registro.zonas?.alta ?? 0}% alta</span>`)
+      .join("")}</div>
+    <div class="didactic-card">
+      <p class="eyebrow">CÓMO LEER TU PROGRESO</p>
+      <p>${TEXTO_DIDACTICO_HISTORIAL}</p>
+    </div>
+  `;
+  dibujarHistorialLineas(sesiones);
+  document.querySelector("#history-dialog").showModal();
 }
 
 function actualizarSimulacionAutomatica(tiempo) {
@@ -491,6 +728,7 @@ let rmssdBasal = 0;
 let rmssdFinal = 0;
 let registroHistorial = [];
 let registroBasal = null;
+let evaluacionOmitida = false;
 let puntosLogro = 0;
 let acumuladoCS = 0;
 let tiempoCS = 0;
@@ -530,20 +768,37 @@ function iniciarEvaluacionBasal() {
     console.warn("Sensor Bluetooth no conectado");
     return;
   }
-  
+
+  evaluacionOmitida = false;
   faseActual = estadoFases.EVALUACION;
   tiempoFaseInicio = reloj.getElapsedTime();
   tiempoFaseDuracion = 60; // 60 segundos
   rmssdBasal = 0;
   timerDisplay.classList.remove("complete");
-  
+
   actualizarInstrucciones(
     "Evaluación Basal",
     "Respira naturalmente. Se está calculando tu RMSSD basal...",
     60
   );
-  
+
   console.log("[FASE 1] Evaluación basal iniciada - 60 segundos");
+}
+
+// Saltar Fase 1 e ir directo a la configuración del entrenamiento.
+function saltarEvaluacionBasal() {
+  if ((!caracteristicaFrecuenciaCardiaca && !camaraActiva) || faseActual !== estadoFases.ESPERA) {
+    console.warn("Sensor Bluetooth no conectado");
+    return;
+  }
+
+  evaluacionOmitida = true;
+  rmssdBasal = 0;
+  registroBasal = null;
+  faseActual = estadoFases.RESULTADOS_BASAL;
+  mostrarResultadosBasales(null);
+
+  console.log("[FASE 1] Evaluación basal omitida por el usuario");
 }
 
 // Iniciar Fase 2: Entrenamiento HRVB (3-5 minutos con pacer)
@@ -552,7 +807,7 @@ function iniciarEntrenamiento() {
     console.warn("Sensor Bluetooth no conectado");
     return;
   }
-  
+
   faseActual = estadoFases.ENTRENAMIENTO;
   tiempoFaseInicio = reloj.getElapsedTime();
   const duracionInput = document.querySelector("#training-duration");
@@ -565,57 +820,60 @@ function iniciarEntrenamiento() {
   tiempoCS = 0;
   ultimoTiempoSesion = reloj.getElapsedTime();
   ultimoBloqueLogro = 0;
-  
+
   actualizarInstrucciones(
     "Entrenamiento HRVB",
-    "Sincroniza tu respiración con el anillo. Inhala (4s) - Exhala (6s)",
+    "Sincroniza tu respiración con el orbe. Inhala (4s) - Exhala (6s)",
     tiempoFaseDuracion
   );
-  
+
   console.log("[FASE 2] Entrenamiento HRVB iniciado - 3 minutos");
 }
 
 // Terminar fase y pasar a la siguiente
 function terminarFase() {
   const tiempoTranscurrido = reloj.getElapsedTime() - tiempoFaseInicio;
-  
+
   if (faseActual === estadoFases.EVALUACION) {
     // Guardar RMSSD basal
     rmssdBasal = rmssd;
     console.log(`[FASE 1 - FIN] RMSSD Basal: ${rmssdBasal.toFixed(1)} ms`);
-    
+
     registroBasal = { rmssd: rmssdBasal, coherencia: factorSomatico };
     faseActual = estadoFases.RESULTADOS_BASAL;
     mostrarResultadosBasales(registroBasal);
-  } 
+  }
   else if (faseActual === estadoFases.ENTRENAMIENTO) {
     // Guardar RMSSD final
     rmssdFinal = rmssd;
     const cambioRMSSD = rmssdFinal - rmssdBasal;
-    const porcentajeMejora = ((cambioRMSSD / rmssdBasal) * 100).toFixed(1);
-    
+    const hayBasalValido = !evaluacionOmitida && rmssdBasal > 0;
+    const porcentajeMejora = hayBasalValido ? parseFloat(((cambioRMSSD / rmssdBasal) * 100).toFixed(1)) : null;
+
     console.log(`[FASE 2 - FIN] RMSSD Final: ${rmssdFinal.toFixed(1)} ms`);
-    console.log(`[MEJORA] Δ RMSSD: ${cambioRMSSD.toFixed(1)} ms (${porcentajeMejora}%)`);
-    
+    if (hayBasalValido) {
+      console.log(`[MEJORA] Δ RMSSD: ${cambioRMSSD.toFixed(1)} ms (${porcentajeMejora}%)`);
+    }
+
     // Registrar en historial
     const totalZonas = Object.values(tiempoZonas).reduce((suma, valor) => suma + valor, 0) || 1;
     const avgCS = tiempoCS > 0 ? acumuladoCS / tiempoCS : factorSomatico;
     const registro = {
       fecha: new Date().toISOString(),
-      rmssdBasal: parseFloat(rmssdBasal.toFixed(1)),
+      rmssdBasal: hayBasalValido ? parseFloat(rmssdBasal.toFixed(1)) : null,
       rmssdFinal: parseFloat(rmssdFinal.toFixed(1)),
-      cambio: parseFloat(cambioRMSSD.toFixed(1)),
-      porcentajeMejora: parseFloat(porcentajeMejora),
+      cambio: hayBasalValido ? parseFloat(cambioRMSSD.toFixed(1)) : null,
+      porcentajeMejora,
       coherencia: parseFloat(factorSomatico.toFixed(2)),
       avgCS: parseFloat(avgCS.toFixed(2)),
       puntosLogro,
       bpmFinal: bpm,
       zonas: Object.fromEntries(Object.entries(tiempoZonas).map(([zona, tiempo]) => [zona, Math.round((tiempo / totalZonas) * 100)])),
     };
-    
+
     registroHistorial.push(registro);
     guardarHistorial();
-    
+
     // Mostrar resultados
     faseActual = estadoFases.HISTORIAL;
     mostrarResultados(registro);
@@ -627,11 +885,11 @@ function actualizarInstrucciones(titulo, texto, duracion) {
   const overlay = document.querySelector("#phase-overlay");
   const titleEl = document.querySelector("#instruction-title");
   const textEl = document.querySelector("#instruction-text");
-  
+
   titleEl.textContent = titulo;
   textEl.textContent = texto;
   document.querySelector("#training-config").classList.add("hidden");
-  
+
   if (faseActual === estadoFases.EVALUACION || faseActual === estadoFases.ENTRENAMIENTO) {
     overlay.classList.add("hidden");
   } else {
@@ -639,35 +897,55 @@ function actualizarInstrucciones(titulo, texto, duracion) {
   }
 }
 
-// Mostrar resultados de la sesión
+// Mostrar resultados de la sesión — reporte inspirado en HeartMath Inner Balance:
+// dona tricolor de distribución de coherencia, resumen de logros, insignia
+// comparativa frente a la sesión anterior y una tarjeta didáctica.
 function mostrarResultados(registro) {
-  const anterior = registroHistorial.at(-2);
-  const altaAnterior = anterior?.zonas?.alta || 0;
-  const diferenciaAlta = registro.zonas.alta - altaAnterior;
-  const comparativa = anterior
-    ? `Lograste un ${diferenciaAlta >= 0 ? "+" : ""}${diferenciaAlta}% de tiempo en coherencia alta frente a tu sesión anterior.`
-    : "Esta es tu primera sesión guardada; úsala como punto de referencia.";
-  const zonas = ["baja", "media", "alta"];
-  const colores = { baja: "#e45757", media: "#4c8dff", alta: "#42d392" };
+  const badge = calcularBadgeComparativo(registroHistorial);
+  const zonas = { baja: registro.zonas.baja || 0, media: registro.zonas.media || 0, alta: registro.zonas.alta || 0 };
+
   document.querySelector("#results-content").innerHTML = `
-    <div class="report-highlight"><span>Coherencia promedio</span><strong>${registro.avgCS.toFixed(1)} CS</strong><span class="achievement">${registro.puntosLogro} pts de logro</span></div>
-    <p class="report-comparison">${comparativa}</p>
-    <h3>Tiempo en coherencia</h3>
-    <div class="zone-report">${zonas.map((zona) => `<div><span><i style="background:${colores[zona]}"></i>${zona}</span><strong>${registro.zonas[zona] || 0}%</strong></div>`).join("")}</div>
-    <h3>Resumen biométrico</h3>
-    <div class="biometric-report"><div><span>RMSSD final</span><strong>${registro.rmssdFinal.toFixed(1)} ms</strong></div><div><span>BPM final</span><strong>${registro.bpmFinal || "--"}</strong></div></div>`;
+    <div class="report-grid">
+      <div class="donut-card">
+        <canvas id="results-donut" aria-label="Distribución de coherencia de la sesión"></canvas>
+        <div class="donut-center"><strong>${registro.avgCS.toFixed(1)}</strong><span>CS promedio</span></div>
+      </div>
+      <div class="donut-legend">
+        <div><i style="background:var(--red)"></i><span>Baja</span><strong>${zonas.baja}%</strong></div>
+        <div><i style="background:var(--blue)"></i><span>Media</span><strong>${zonas.media}%</strong></div>
+        <div><i style="background:var(--accent)"></i><span>Alta</span><strong>${zonas.alta}%</strong></div>
+      </div>
+    </div>
+
+    <div class="achievement-row">
+      <div><span>Puntos de logro</span><strong>${registro.puntosLogro}</strong></div>
+      <div><span>RMSSD final</span><strong>${registro.rmssdFinal.toFixed(1)} ms</strong></div>
+      <div><span>BPM final</span><strong>${registro.bpmFinal || "--"}</strong></div>
+    </div>
+
+    ${badge
+      ? `<p class="badge-comparativa ${badge.positivo ? "positive" : "negative"}">${badge.positivo ? "▲" : "▼"} ${badge.texto}</p>`
+      : `<p class="badge-comparativa neutral">Esta es tu primera sesión guardada; úsala como punto de referencia.</p>`}
+
+    <div class="didactic-card">
+      <p class="eyebrow">¿QUÉ SIGNIFICA ESTO?</p>
+      <p>${TEXTO_DIDACTICO_SESION}</p>
+    </div>
+  `;
+
+  dibujarDonutCoherencia(document.querySelector("#results-donut"), zonas);
   document.querySelector("#session-hud")?.classList.add("hidden");
   document.querySelector("#results-dialog").showModal();
 }
 
 function mostrarResultadosBasales(registro) {
   const overlay = document.querySelector("#phase-overlay");
-  document.querySelector("#instruction-title").textContent = "Resultados basales";
-  document.querySelector("#instruction-text").innerHTML = `
-    <strong>RMSSD: ${registro.rmssd.toFixed(1)} ms</strong><br>
-    Coherencia inicial: <strong>${registro.coherencia.toFixed(2)}</strong><br><br>
-    Tu nivel de coherencia de reposo indica tu estado actual de tono vagal y flexibilidad autonómica antes de ejercitar.
-  `;
+  document.querySelector("#instruction-title").textContent = registro ? "Resultados basales" : "Evaluación basal omitida";
+  document.querySelector("#instruction-text").innerHTML = registro
+    ? `<strong>RMSSD: ${registro.rmssd.toFixed(1)} ms</strong><br>
+       Coherencia inicial: <strong>${registro.coherencia.toFixed(2)}</strong><br><br>
+       Tu nivel de coherencia de reposo indica tu estado actual de tono vagal y flexibilidad autonómica antes de ejercitar.`
+    : "Puedes comenzar tu entrenamiento de coherencia cuando quieras; mediremos tu progreso desde el primer latido.";
   document.querySelector("#timer-display").textContent = "01:00";
   document.querySelector("#training-config").classList.remove("hidden");
   overlay.classList.remove("hidden");
@@ -678,30 +956,34 @@ function actualizarBotonesPhase() {
   const btn1 = document.querySelector("#btn-phase1");
   const btn2 = document.querySelector("#btn-phase2");
   const btn3 = document.querySelector("#btn-phase3");
+  const botonSaltarBasal = document.querySelector("#btn-skip-basal");
   const phaseInfo = document.querySelector("#phase-info");
-  
+
   const estaConectado = Boolean(caracteristicaFrecuenciaCardiaca || camaraActiva);
-  
+
   btn1.disabled = !estaConectado || faseActual !== estadoFases.ESPERA;
+  if (botonSaltarBasal) botonSaltarBasal.disabled = !estaConectado || faseActual !== estadoFases.ESPERA;
   btn2.disabled = !estaConectado || faseActual !== estadoFases.RESULTADOS_BASAL;
   btn3.disabled = registroHistorial.length === 0;
-  
+
   // Actualizar indicador de fase activa
   [btn1, btn2, btn3].forEach(btn => btn.classList.remove("active"));
   if (faseActual === estadoFases.EVALUACION) btn1.classList.add("active");
   if (faseActual === estadoFases.ENTRENAMIENTO) btn2.classList.add("active");
   if (faseActual === estadoFases.RESULTADOS_BASAL) btn2.classList.add("active");
   if (faseActual === estadoFases.HISTORIAL) btn3.classList.add("active");
-  
+
   // Actualizar información de sesión
   if (faseActual === estadoFases.ESPERA) {
     phaseInfo.textContent = estaConectado ? "Listo para iniciar sesión" : "Conecta el sensor para comenzar";
   } else if (faseActual === estadoFases.EVALUACION) {
     phaseInfo.textContent = `RMSSD Actual: ${rmssd.toFixed(1)} ms\nPuntaje de Coherencia: ${factorSomatico.toFixed(2)} CS`;
   } else if (faseActual === estadoFases.ENTRENAMIENTO) {
-    phaseInfo.textContent = `Basal: ${rmssdBasal.toFixed(1)} ms\nActual: ${rmssd.toFixed(1)} ms\nPuntaje de Coherencia: ${factorSomatico.toFixed(2)} CS`;
+    phaseInfo.textContent = `Basal: ${evaluacionOmitida ? "omitida" : rmssdBasal.toFixed(1) + " ms"}\nActual: ${rmssd.toFixed(1)} ms\nPuntaje de Coherencia: ${factorSomatico.toFixed(2)} CS`;
   } else if (faseActual === estadoFases.RESULTADOS_BASAL) {
-    phaseInfo.textContent = `Resultados basales · RMSSD: ${rmssdBasal.toFixed(1)} ms · Elige la duración del entrenamiento`;
+    phaseInfo.textContent = evaluacionOmitida
+      ? "Evaluación basal omitida · Elige la duración del entrenamiento"
+      : `Resultados basales · RMSSD: ${rmssdBasal.toFixed(1)} ms · Elige la duración del entrenamiento`;
   }
 }
 
@@ -726,6 +1008,7 @@ const statusConexion = document.querySelector("#connection-status");
 const btn1 = document.querySelector("#btn-phase1");
 const btn2 = document.querySelector("#btn-phase2");
 const btn3 = document.querySelector("#btn-phase3");
+const botonSaltarBasal = document.querySelector("#btn-skip-basal");
 const overlayInstrucciones = document.querySelector("#phase-overlay");
 const timerDisplay = document.querySelector("#timer-display");
 const trainingDuration = document.querySelector("#training-duration");
@@ -734,6 +1017,7 @@ const trainingDurationValue = document.querySelector("#training-duration-value")
 // Listeners de botones de fase
 btn1.addEventListener("click", iniciarEvaluacionBasal);
 btn2.addEventListener("click", iniciarEntrenamiento);
+botonSaltarBasal?.addEventListener("click", saltarEvaluacionBasal);
 botonCamara.addEventListener("click", iniciarCamaraPPG);
 document.querySelector("#btn-start-training").addEventListener("click", iniciarEntrenamiento);
 trainingDuration.addEventListener("input", () => {
@@ -748,13 +1032,13 @@ btn3.addEventListener("click", () => {
 function actualizarEstadoBluetooth(estado, conectado = false) {
   estadoConexion = estado;
   statusConexion.textContent = estado;
-  
+
   if (conectado) {
     statusConexion.classList.add("connected");
   } else {
     statusConexion.classList.remove("connected");
   }
-  
+
   actualizarBotonesPhase();
 }
 

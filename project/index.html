@@ -79,6 +79,8 @@
           <span class="phase-text">Evaluación de coherencia basal<br><small>1 minuto · tono vagal / RMSSD</small></span>
         </button>
 
+        <button id="btn-skip-basal" class="btn-skip" type="button" disabled>Saltar evaluación e ir directo al entrenamiento →</button>
+
         <button id="btn-phase2" class="btn-phase" disabled>
           <span class="phase-number">2</span>
           <span class="phase-text">Entrenamiento de coherencia cardíaca<br><small>2–15 minutos · pacer 0.1 Hz</small></span>
@@ -124,7 +126,7 @@
 
   <dialog id="info-dialog" class="info-dialog"><button class="dialog-close" aria-label="Cerrar">×</button><p class="eyebrow">APRENDER</p><h2 id="info-title"></h2><p id="info-text"></p></dialog>
   <dialog id="results-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar resultados">×</button><p class="eyebrow">REPORTE DE SESIÓN</p><h2>Tu sesión de coherencia</h2><div id="results-content"></div></dialog>
-  <dialog id="history-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar historial">×</button><p class="eyebrow">PROGRESO</p><h2>Últimas sesiones</h2><canvas id="history-chart" aria-label="Evolución de coherencia y RMSSD"></canvas><div id="history-summary"></div></dialog>
+  <dialog id="history-dialog" class="report-dialog"><button class="dialog-close" aria-label="Cerrar historial">×</button><p class="eyebrow">PROGRESO</p><h2>Últimas sesiones</h2><canvas id="history-chart" aria-label="Evolución del puntaje de coherencia y del tiempo en coherencia alta"></canvas><div id="history-summary"></div></dialog>
 
   <script type="importmap">
     {
