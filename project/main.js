@@ -642,7 +642,7 @@ function actualizarCampoAnimado() {
   const delta = THREE.MathUtils.clamp(tiempo - tiempoAnterior, 0, 0.1);
   tiempoAnterior = tiempo;
 
-  if (!caracteristicaFrecuenciaCardiaca) actualizarSimulacionAutomatica(tiempo);
+  if (!caracteristicaFrecuenciaCardiaca && !camaraActiva) actualizarSimulacionAutomatica(tiempo);
   // Transiciones suaves e independientes del framerate (evita saltos bruscos
   // en dispositivos con tasas de refresco variables).
   factorSomatico = THREE.MathUtils.damp(factorSomatico, factorSomaticoObjetivo, 1.4, delta);
