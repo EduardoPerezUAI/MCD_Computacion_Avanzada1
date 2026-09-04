@@ -11,10 +11,9 @@
     <section class="viewport-shell">
       <header class="project-header">
         <div>
-          <p class="eyebrow">BIOFEEDBACK · MODELO NEUROVISCERAL</p>
-          <h1>Respira en coherencia</h1>
+          <h1>Resonancia Autonómica</h1>
           <p class="subtitle">
-            Sistema de modulación del estrés agudo basado en el Modelo de Integración Neurovisceral.
+            Artefacto de Biorretroalimentación para el entrenamiento de la Coherencia Cardiorrespiratoria
           </p>
         </div>
       </header>
@@ -121,11 +120,17 @@
       <section class="analysis-section" aria-label="Análisis avanzado de variabilidad cardíaca">
         <div class="section-heading"><h3>Análisis avanzado (VFC)</h3></div>
         <div class="chart-block">
-          <p class="chart-label">Diagrama de Poincaré <span>RRₙ vs RRₙ₊₁ · últimos 50 latidos</span></p>
+          <div class="chart-label">
+            <span class="chart-title">Diagrama de Poincaré <button class="info-button" data-info="poincare">i</button></span>
+            <span class="chart-sub">RRₙ vs RRₙ₊₁ · últimos 50 latidos</span>
+          </div>
           <div class="chart-wrap"><canvas id="chart-poincare" aria-label="Diagrama de Poincaré de los intervalos RR"></canvas></div>
         </div>
         <div class="chart-block">
-          <p class="chart-label">Densidad espectral (PSD) <span>pico en 0.1 Hz = coherencia</span></p>
+          <div class="chart-label">
+            <span class="chart-title">Densidad espectral (PSD) <button class="info-button" data-info="psd">i</button></span>
+            <span class="chart-sub">pico en 0.1 Hz = coherencia</span>
+          </div>
           <div class="chart-wrap"><canvas id="chart-psd" aria-label="Densidad espectral de potencia de la variabilidad cardíaca"></canvas></div>
         </div>
       </section>
@@ -135,13 +140,6 @@
         <h3>Información de Sesión</h3>
         <output id="phase-info" class="phase-info">Esperando conexión Bluetooth...</output>
       </div>
-
-      <footer class="panel-footer">
-        <p>
-          <strong>HeartMath · respiración resonante</strong><br />
-          4 segundos inhalar · 6 segundos exhalar
-        </p>
-      </footer>
     </aside>
   </main>
 

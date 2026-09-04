@@ -52,7 +52,7 @@ const camara = new THREE.PerspectiveCamera(
   200
 );
 
-camara.position.set(0, 0, 13);
+camara.position.set(0, 0, 9);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -67,8 +67,8 @@ const controlesOrbita = new OrbitControls(camara, renderer.domElement);
 controlesOrbita.enableDamping = true;
 controlesOrbita.enableRotate = true;
 controlesOrbita.dampingFactor = 0.08;
-controlesOrbita.minDistance = 6;
-controlesOrbita.maxDistance = 30;
+controlesOrbita.minDistance = 5;
+controlesOrbita.maxDistance = 28;
 controlesOrbita.target.set(0, 0, 0);
 
 const luzAmbiente = new THREE.AmbientLight(0x243142, 1.2);
@@ -1596,6 +1596,20 @@ const textosInformativos = {
   rr: ["Intervalo RR", "El tiempo en milisegundos entre cada latido consecutivo del corazón."],
   resonancia: ["Frecuencia de resonancia · 0.1 Hz", "Ritmo óptimo de respiración, aproximadamente 6 respiraciones por minuto, que estimula el nervio vago y equilibra el sistema nervioso."],
   rmssd: ["RMSSD", "Métrica que refleja la actividad del sistema parasimpático y la capacidad de recuperación ante el estrés."],
+  poincare: [
+    "Diagrama de Poincaré",
+    "Cada punto compara un latido con el siguiente: el eje X es el intervalo RR actual y el eje Y es el que le sigue. " +
+    "Una nube alargada en forma de cigarro sobre la diagonal indica una variabilidad saludable y rítmica, típica de una respiración coherente. " +
+    "Una nube compacta y redonda cerca del centro refleja poca variabilidad (tono parasimpático bajo); " +
+    "una nube muy dispersa y sin forma indica un ritmo irregular o caótico.",
+  ],
+  psd: [
+    "Densidad espectral (PSD)",
+    "Descompone la variabilidad del ritmo cardíaco en las frecuencias que la componen. " +
+    "Un pico alto y angosto exactamente en 0.1 Hz (línea punteada) — el ritmo de la respiración resonante, unas 6 respiraciones por minuto — " +
+    "indica que el corazón y el nervio vago están oscilando en sincronía: coherencia real. " +
+    "Un espectro plano, bajo y disperso, sin picos claros, refleja un ritmo desorganizado, típico de estrés o de una respiración no sincronizada.",
+  ],
 };
 const dialogoInfo = document.querySelector("#info-dialog");
 document.querySelectorAll("[data-info]").forEach((boton) => boton.addEventListener("click", () => {
